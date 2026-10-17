@@ -78,6 +78,8 @@ Return ONLY a raw JSON object (no markdown) with EXACTLY this shape:
   "hazardous": false,
   "concrete_dirt_roofing": false,
   "hot_tub_piano_shed": false,
+  "est_weight_lbs": 0,
+  "heavy_material": false,
   "notes": "one short sentence for the customer, in the customer's language",
   "jarvis": {
     "cubic_yards_estimated": 0,
@@ -97,6 +99,7 @@ Return ONLY a raw JSON object (no markdown) with EXACTLY this shape:
     "summary_english": "string"
   }
 }
+WEIGHT: estimate the TOTAL weight in pounds of everything visible (est_weight_lbs). Reference: sofa 100-150, mattress 60-80, dresser 100-150, fridge 200-300, washer 150-200, trash bag 20-30, hot tub 500-900, full trailer of household junk 1500-3000, full trailer of construction debris 3000-6000, 1 cu yd dirt/concrete 2500-4000. When unsure estimate HIGHER. heavy_material = true if mostly construction debris, roofing, tile, dirt, concrete, rock or brick.
 Rules: "special" counts only fridges/freezers/AC units, mattresses/box springs, TVs/monitors, tires without rims, tires with rims.
 If more than one truck is needed use size "full" and loads = number of trucks. If unsure, choose the larger size and lower confidence.`;
 }
@@ -188,6 +191,8 @@ exports.handler = async (event) => {
       hazardous: !!est.hazardous,
       concrete_dirt_roofing: !!est.concrete_dirt_roofing,
       hot_tub_piano_shed: !!est.hot_tub_piano_shed,
+      est_weight_lbs: Math.max(0, Math.min(40000, Math.round(+est.est_weight_lbs || 0))),
+      heavy_material: !!est.heavy_material,
       notes: String(est.notes || '').slice(0, 240),
       model: usedModel
     };
