@@ -8,6 +8,18 @@ const SIZES = Object.keys(PRICING.sizes);
 const SUR = PRICING.surcharges || {};
 const SUR_KEYS = Object.keys(SUR).filter(k => !k.startsWith('_'));
 const SCHED = Object.assign({ timezone: 'America/Chicago', days: [1, 2, 3, 4, 5, 6], windows: ['8:00-10:00', '10:00-12:00', '12:00-14:00', '14:00-16:00', '16:00-18:00'], min_hours_notice: 12, days_ahead: 10 }, PRICING.schedule || {});
+const DUMP = PRICING.dump_fee || {};
+const DR = Object.assign({ per_ton: 60, heavy_per_ton: 95, minimum: 45, env_fee: [16, 30], safety_pct: 15, weight_range_pct: 20 }, PRICING.dump_rates || {});
+/* Dump fee = max(size minimum, estimated tons x landfill rate + env. fee, + safety margin) */
+function dumpFee(size, loads, lbs, heavy) {
+  const floor = Array.isArray(DUMP[size]) ? DUMP[size].map(v => v * loads) : [DR.minimum * loads, DR.minimum * loads];
+  const w = Math.max(0, Number(lbs) || 0);
+  if (!w) return { low: floor[0], high: floor[1], tons: null };
+  const k = DR.weight_range_pct / 100, rate = heavy ? DR.heavy_per_ton : DR.per_ton, m = 1 + DR.safety_pct / 100;
+  const cost = (lb, env) => (Math.max(DR.minimum, (lb / 2000) * rate) + env) * m;
+  const lo = cost(w * (1 - k), DR.env_fee[0]), hi = cost(w * (1 + k), DR.env_fee[1]);
+  return { low: Math.max(floor[0], r5(lo)), high: Math.max(floor[1], r5(hi)), tons: [w * (1 - k) / 2000, w * (1 + k) / 2000] };
+}
 const DENSE = PRICING.dense_per_cubic_yard || [60, 90], DEMO = PRICING.demolition_per_hour || [90, 90];
 const FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
 const hits = new Map(), LIMIT = 40, WINDOW_MS = 10 * 60 * 1000;
@@ -122,10 +134,12 @@ function computeQuote(a) {
   if (dh) add('Demolition / dismantling', `${a.demolition_item ? txt(a.demolition_item, 40) + ', ' : ''}~${dh} hr on site x ${range(DEMO[0], DEMO[1])}`, dh * DEMO[0], dh * DEMO[1]);
   const st = clampInt(a.stairs, 0, 10);
   if (st) add('Stairs', `${st} x $${PRICING.stairs}`, st * PRICING.stairs, st * PRICING.stairs);
-  lines.push({ label: 'Dump / disposal fee', detail: 'Billed at cost, by weight', amount: 'At cost' });
+  const lbs = clampNum(a.est_weight_lbs, 0, 40000), heavy = !!(a.heavy_material || clampNum(a.dense_cubic_yards, 0, 40));
+  const d = dumpFee(size, loads, lbs, heavy), df = true;
+  add('Dump / disposal fee', d.tons ? `Est. ${d.tons[0].toFixed(d.tons[1] < 1 ? 2 : 1)}-${d.tons[1].toFixed(d.tons[1] < 1 ? 2 : 1)} tons${heavy ? ' (heavy/C&D)' : ''} - adjusted to landfill ticket` : 'Estimated - adjusted to the actual landfill ticket', d.low, d.high);
 
   const confirmOnSite = !!(yd || dh || loads > 1);
-  return { custom: false, confirm_on_site: confirmOnSite, low: r5(lo), high: r5(hi), lines, travel_to_confirm: city !== 'austin' };
+  return { custom: false, confirm_on_site: confirmOnSite, dump_included: !!df, low: r5(lo), high: r5(hi), lines, travel_to_confirm: city !== 'austin' };
 }
 
 /* Safety net: any $ amount the AI writes must come from pricing.json or from calculate_quote. */
@@ -134,12 +148,13 @@ function guardPrices(reply, state, es) {
   add(PRICING.fuelAustin); add(PRICING.stairs); add(PRICING.rate); Object.values(PRICING.items || {}).forEach(add);
   SUR_KEYS.forEach(k => (surRange(k) || []).forEach(add)); DENSE.forEach(add); DEMO.forEach(add);
   for (const z of Object.values(PRICING.sizes)) add(z.base);
+  Object.values(DUMP).forEach(v => Array.isArray(v) && v.forEach(add));
   if (state.quote) { add(state.quote.low); add(state.quote.high); state.quote.lines.forEach(l => (l.amount.match(/\d[\d,]*/g) || []).forEach(n => add(parseFloat(n.replace(/,/g, ''))))); }
   const found = (reply.match(/\$\s?\d[\d,]*(?:\.\d+)?/g) || []).map(x => Math.round(parseFloat(x.replace(/[$,\s]/g, ''))));
   if (!found.some(n => !ok.has(n))) return reply;
   const q = state.quote;
-  if (q) return es ? `Según nuestra lista de precios, tu estimado es de ${money(q.low)} a ${money(q.high)} antes de la tarifa de descarga (se cobra al costo, por peso). El precio exacto se confirma por escrito antes de cargar. ¿Quieres agendar?`
-                   : `Based on our price list, your estimate is ${money(q.low)} to ${money(q.high)} before the dump fee (billed at cost, by weight). The exact price is confirmed in writing before we load. Would you like to book?`;
+  if (q) return es ? `Según nuestra lista de precios, tu estimado es de ${money(q.low)} a ${money(q.high)}, incluyendo la tarifa de descarga estimada. El precio exacto se confirma por escrito antes de cargar. ¿Quieres agendar?`
+                   : `Based on our price list, your estimate is ${money(q.low)} to ${money(q.high)}, including the estimated dump fee. The exact price is confirmed in writing before we load. Would you like to book?`;
   return es ? 'Solo puedo compartir precios de nuestra lista oficial. Cuéntame qué tienes (o manda una foto) y calculo tu estimado.' : 'I can only share prices from our official price list. Tell me what you have (or send a photo) and I will calculate your estimate.';
 }
 
@@ -156,7 +171,9 @@ const TOOLS = [{ functionDeclarations: [
       stairs: { type: 'INTEGER', description: 'flights of stairs without elevator' },
       dense_cubic_yards: { type: 'NUMBER', description: 'cubic yards of dirt, concrete, rock, tile or heavy debris SEEN or mentioned; 0 if none' },
       demolition_hours: { type: 'NUMBER', description: 'estimated extra crew hours on site to dismantle/demolish (shed, hot tub, deck, playset); 0 if none' },
-      demolition_item: { type: 'STRING', description: 'what needs dismantling, if any' }
+      demolition_item: { type: 'STRING', description: 'what needs dismantling, if any' },
+      est_weight_lbs: { type: 'NUMBER', description: 'your best estimate of the TOTAL weight in pounds of everything to haul (all loads). Reference: sofa 100-150, recliner 80, mattress 60-80, box spring 40, dresser 100-150, fridge 200-300, washer 150-200, dryer 120, TV 30-60, bags of trash 20-30 each, hot tub 500-900, shed debris 1000-3000, full trailer of household junk 1500-3000, full trailer of construction debris 3000-6000, 1 cu yd of dirt/concrete ~2500-4000. When unsure, estimate HIGHER.' },
+      heavy_material: { type: 'BOOLEAN', description: 'true if the load is mostly construction/demolition debris, roofing, tile, dirt, concrete, rock or brick' }
     }, itemProps), required: ['size', 'city'] } },
   { name: 'check_availability', description: 'Returns the open appointment windows (Austin time) for the next days. Call before offering times.',
     parameters: { type: 'OBJECT', properties: {} } },
@@ -183,7 +200,8 @@ HOW TO QUOTE:
 - You need: what the items are (or photos), the city, and stairs (flights, no elevator).
 - Load sizes: single (one bulky item or up to ~3 small pieces), quarter (~1/4 truck), half, three_quarter, full (whole truck). More than one truck: "full" and loads = number of trucks. If between sizes, choose the larger.
 - Surcharges are added ONLY when the item is actually visible in a photo or the visitor mentions it. Never assume hidden items. Current surcharges: ${extras}. Dirt/concrete/debris ${range(...DENSE)} per cubic yard. Demolition/dismantling (sheds, hot tubs, decks) ${range(...DEMO)} per hour on site.
-- When you have enough information call calculate_quote. NEVER state a price, fee or total that did not come from calculate_quote. Explain the range simply: it is an estimate, the dump fee is billed at cost by weight, and the exact price is confirmed in writing before loading. If confirm_on_site is true, say the crew confirms dense material/demolition on site.
+- Always estimate the total weight (est_weight_lbs) from what you see; the dump fee is calculated from that weight. When unsure, estimate higher so EcoWise does not lose money.
+- When you have enough information call calculate_quote. NEVER state a price, fee or total that did not come from calculate_quote. Explain the range simply: it is an estimate that already includes an estimated dump/disposal fee (the final dump fee is adjusted to the actual landfill ticket), and the exact price is confirmed in writing before loading. If confirm_on_site is true, say the crew confirms dense material/demolition on site.
 HOW TO BOOK:
 - After a quote, offer to book. Call check_availability and offer 2-3 windows. Then collect name, mobile number, service address and clear permission to call/text. Then call book_appointment.
 - After book_appointment: if confirmed is true, tell them they are booked for that day and window and the team will text a reminder. If confirmed is false, say it is a REQUEST and the team will text to confirm. If a window was just taken, apologize and offer other open windows.
@@ -215,7 +233,7 @@ async function runTool(name, args, state) {
   args = args && typeof args === 'object' ? args : {};
   if (name === 'calculate_quote') {
     const q = computeQuote(args); state.quote = q;
-    return { estimated_total_before_dump_fee: `${money(q.low)} - ${money(q.high)}`, lines: q.lines.map(l => `${l.label} (${l.detail}): ${l.amount}`), confirm_on_site: q.confirm_on_site, travel_to_confirm: q.travel_to_confirm };
+    return { [q.dump_included ? 'estimated_total_including_dump_fee' : 'estimated_total_before_dump_fee']: `${money(q.low)} - ${money(q.high)}`, lines: q.lines.map(l => `${l.label} (${l.detail}): ${l.amount}`), confirm_on_site: q.confirm_on_site, travel_to_confirm: q.travel_to_confirm };
   }
   if (name === 'check_availability') {
     const a = await availableSlots(); state.slots = a.slots; state.calendar = a.calendar;
@@ -242,7 +260,7 @@ async function runTool(name, args, state) {
       if (res && res.ok) { appt.confirmed = true; appt.eventId = res.eventId; status = 'booked on the EcoWise calendar - the team will text a reminder'; }
     }
     state.lead = { name: name2, phone, appointment: appt,
-      summary: `${appt.confirmed ? 'BOOKED' : 'APPOINTMENT REQUEST'}: ${appt.day} ${appt.window} at ${appt.address}. ${txt(args.summary, 300)}${est ? ` Estimate ${est} + dump fee.` : ''}` };
+      summary: `${appt.confirmed ? 'BOOKED' : 'APPOINTMENT REQUEST'}: ${appt.day} ${appt.window} at ${appt.address}. ${txt(args.summary, 300)}${est ? ` Estimate ${est} incl. est. dump fee.` : ''}` };
     return { saved: true, status, confirmed: appt.confirmed, appointment: { day: appt.day, window: appt.window, address: appt.address } };
   }
   if (name === 'save_lead') {
@@ -270,8 +288,8 @@ function codeReply(state, es) {
     const opts = state.slots.slice(0, 3).map(s => `${s.day}: ${s.windows.slice(0, 3).join(', ')}`).join(' · ');
     return es ? `Tenemos estos horarios: ${opts}. ¿Cuál te queda mejor?` : `We have these openings: ${opts}. Which works best for you?`;
   }
-  if (q) return es ? `Tu estimado es de ${money(q.low)} a ${money(q.high)} antes de la tarifa de descarga (al costo, por peso). El precio exacto se confirma por escrito antes de cargar. ¿Quieres agendar?`
-                   : `Your estimate is ${money(q.low)} to ${money(q.high)} before the dump fee (at cost, by weight). The exact price is confirmed in writing before we load. Would you like to book?`;
+  if (q) return es ? `Tu estimado es de ${money(q.low)} a ${money(q.high)}, incluyendo la tarifa de descarga estimada. El precio exacto se confirma por escrito antes de cargar. ¿Quieres agendar?`
+                   : `Your estimate is ${money(q.low)} to ${money(q.high)}, including the estimated dump fee. The exact price is confirmed in writing before we load. Would you like to book?`;
   return es ? 'Perdón, ¿puedes repetirlo con otras palabras? También puedes llamar o escribir al (512) 369-2644.' : 'Sorry, could you rephrase that? You can also call or text (512) 369-2644.';
 }
 
