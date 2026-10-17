@@ -1,5 +1,5 @@
 {
-  "_comment": "EDIT YOUR REAL PRICES HERE. The website estimator and the chat assistant both read this file.",
+  "_comment": "EDIT YOUR REAL PRICES HERE. The website estimator and JARVIS (chat) both read this file. Ranges are [low, high].",
   "crew": 2,
   "rate": 50,
   "fuelAustin": 25,
@@ -11,5 +11,24 @@
     "three_quarter": { "base": 316, "hrs": [2, 2.5] },
     "full":          { "base": 399, "hrs": [2, 3] }
   },
-  "items": { "fridge": 40, "mattress": 20, "tv": 20, "tire": 15, "tire_rim": 25 }
+  "items": { "fridge": 50, "mattress": 40, "tv": 20, "tire": 15, "tire_rim": 25 },
+  "surcharges": {
+    "_comment": "Only added when the item is seen in a photo or mentioned by the customer.",
+    "mattress":     { "label": "Mattress",                  "range": [40, 60] },
+    "box_spring":   { "label": "Box spring",                "range": [40, 60] },
+    "fridge":       { "label": "Refrigerator/freezer/AC (Freon)", "range": [50, 50] },
+    "washer_dryer": { "label": "Washer or dryer",           "range": [40, 40] },
+    "tv":           { "label": "TV/monitor",                "range": [20, 20] },
+    "tire":         { "label": "Tire",                      "range": [15, 15] },
+    "tire_rim":     { "label": "Tire with rim",             "range": [25, 25] }
+  },
+  "dense_per_cubic_yard": [60, 90],
+  "demolition_per_hour": [90, 90],
+  "schedule": {
+    "timezone": "America/Chicago",
+    "days": [1, 2, 3, 4, 5, 6],
+    "windows": ["8:00-10:00", "10:00-12:00", "12:00-14:00", "14:00-16:00", "16:00-18:00"],
+    "min_hours_notice": 12,
+    "days_ahead": 10
+  }
 }
