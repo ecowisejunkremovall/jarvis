@@ -5,29 +5,161 @@
   "fuelAustin": 25,
   "stairs": 25,
   "sizes": {
-    "single":        { "base": 79,  "hrs": [0.5, 1] },
-    "quarter":       { "base": 149, "hrs": [1, 1.5] },
-    "half":          { "base": 232, "hrs": [1.5, 2] },
-    "three_quarter": { "base": 316, "hrs": [2, 2.5] },
-    "full":          { "base": 399, "hrs": [2, 3] }
+    "single": {
+      "base": 79,
+      "hrs": [
+        0.5,
+        1
+      ]
+    },
+    "quarter": {
+      "base": 149,
+      "hrs": [
+        1,
+        1.5
+      ]
+    },
+    "half": {
+      "base": 232,
+      "hrs": [
+        1.5,
+        2
+      ]
+    },
+    "three_quarter": {
+      "base": 316,
+      "hrs": [
+        2,
+        2.5
+      ]
+    },
+    "full": {
+      "base": 399,
+      "hrs": [
+        2,
+        3
+      ]
+    }
   },
-  "items": { "fridge": 50, "mattress": 40, "tv": 20, "tire": 15, "tire_rim": 25 },
+  "items": {
+    "fridge": 50,
+    "mattress": 40,
+    "tv": 20,
+    "tire": 15,
+    "tire_rim": 25
+  },
   "surcharges": {
     "_comment": "Only added when the item is seen in a photo or mentioned by the customer.",
-    "mattress":     { "label": "Mattress",                  "range": [40, 60] },
-    "box_spring":   { "label": "Box spring",                "range": [40, 60] },
-    "fridge":       { "label": "Refrigerator/freezer/AC (Freon)", "range": [50, 50] },
-    "washer_dryer": { "label": "Washer or dryer",           "range": [40, 40] },
-    "tv":           { "label": "TV/monitor",                "range": [20, 20] },
-    "tire":         { "label": "Tire",                      "range": [15, 15] },
-    "tire_rim":     { "label": "Tire with rim",             "range": [25, 25] }
+    "mattress": {
+      "label": "Mattress",
+      "range": [
+        40,
+        60
+      ]
+    },
+    "box_spring": {
+      "label": "Box spring",
+      "range": [
+        40,
+        60
+      ]
+    },
+    "fridge": {
+      "label": "Refrigerator/freezer/AC (Freon)",
+      "range": [
+        50,
+        50
+      ]
+    },
+    "washer_dryer": {
+      "label": "Washer or dryer",
+      "range": [
+        40,
+        40
+      ]
+    },
+    "tv": {
+      "label": "TV/monitor",
+      "range": [
+        20,
+        20
+      ]
+    },
+    "tire": {
+      "label": "Tire",
+      "range": [
+        15,
+        15
+      ]
+    },
+    "tire_rim": {
+      "label": "Tire with rim",
+      "range": [
+        25,
+        25
+      ]
+    }
   },
-  "dense_per_cubic_yard": [60, 90],
-  "demolition_per_hour": [90, 90],
+  "dense_per_cubic_yard": [
+    60,
+    90
+  ],
+  "demolition_per_hour": [
+    90,
+    90
+  ],
+  "dump_fee": {
+    "_comment": "MINIMUM dump fee per load size (floor). JARVIS never quotes less than this, even if the photo looks light.",
+    "single": [
+      45,
+      45
+    ],
+    "quarter": [
+      45,
+      65
+    ],
+    "half": [
+      65,
+      95
+    ],
+    "three_quarter": [
+      85,
+      120
+    ],
+    "full": [
+      105,
+      150
+    ]
+  },
+  "dump_rates": {
+    "_comment": "Weight-based dump fee: estimated tons x rate + environmental fee, + safety margin. Uses the higher of this or the dump_fee minimum.",
+    "per_ton": 60,
+    "heavy_per_ton": 95,
+    "minimum": 45,
+    "env_fee": [
+      16,
+      30
+    ],
+    "safety_pct": 15,
+    "weight_range_pct": 20
+  },
   "schedule": {
     "timezone": "America/Chicago",
-    "days": [1, 2, 3, 4, 5, 6],
-    "windows": ["8:00-10:00", "10:00-12:00", "12:00-14:00", "14:00-16:00", "16:00-18:00"],
+    "days": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "windows": [
+      "8:00-10:00",
+      "10:00-12:00",
+      "12:00-14:00",
+      "14:00-16:00",
+      "16:00-18:00"
+    ],
     "min_hours_notice": 12,
     "days_ahead": 10
   }
