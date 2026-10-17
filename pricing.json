@@ -1,0 +1,15 @@
+{
+  "_comment": "EDIT YOUR REAL PRICES HERE. The website estimator and the chat assistant both read this file.",
+  "crew": 2,
+  "rate": 50,
+  "fuelAustin": 25,
+  "stairs": 25,
+  "sizes": {
+    "single":        { "base": 79,  "hrs": [0.5, 1] },
+    "quarter":       { "base": 149, "hrs": [1, 1.5] },
+    "half":          { "base": 232, "hrs": [1.5, 2] },
+    "three_quarter": { "base": 316, "hrs": [2, 2.5] },
+    "full":          { "base": 399, "hrs": [2, 3] }
+  },
+  "items": { "fridge": 40, "mattress": 20, "tv": 20, "tire": 15, "tire_rim": 25 }
+}
