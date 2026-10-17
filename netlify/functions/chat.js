@@ -64,6 +64,41 @@ function openSlots(now = new Date()) {
   return out;
 }
 
+/* ---------- Google Calendar via Base44 (function "jarvisCalendar") ---------- */
+const CAL_URL = () => process.env.BASE44_CALENDAR_URL;
+function tzOffsetMin(utcMs, tz) { const p = partsInTz(new Date(utcMs), tz); return (Date.UTC(p.y, p.m - 1, p.d, p.h, p.min) - utcMs) / 60000; }
+function localIso(date, hhmm, tz = SCHED.timezone) {           // "2026-10-19","10:00" in Austin -> UTC ISO
+  const [y, m, d] = date.split('-').map(Number), [h, mi] = hhmm.split(':').map(Number);
+  const guess = Date.UTC(y, m - 1, d, h, mi || 0);
+  return new Date(guess - tzOffsetMin(guess - tzOffsetMin(guess, tz) * 60000, tz) * 60000).toISOString();
+}
+const rawWindow = (label) => SCHED.windows.find(w => fmtWindow(w).replace(/\s/g, '').toLowerCase() === String(label || '').replace(/\s/g, '').toLowerCase());
+const windowRange = (date, raw) => { const [a, b] = raw.split('-'); return { start: localIso(date, a), end: localIso(date, b) }; };
+async function calendar(payload, ms = 3000) {
+  const url = CAL_URL(), secret = process.env.BASE44_LEAD_SECRET;
+  if (!url || !secret) return null;
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(url, { method: 'POST', signal: ctl.signal, headers: { 'content-type': 'application/json', 'x-ecowise-secret': secret }, body: JSON.stringify(payload) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok && !j.conflict) { console.error('calendar', r.status, JSON.stringify(j).slice(0, 200)); return null; }
+    return j;
+  } catch (e) { console.error('calendar failed', e.name); return null; } finally { clearTimeout(t); }
+}
+async function availableSlots() {
+  const slots = openSlots(); if (!slots.length) return { slots, calendar: false };
+  const timeMin = localIso(slots[0].date, '00:00'), timeMax = localIso(slots[slots.length - 1].date, '23:59');
+  const res = await calendar({ action: 'availability', timeMin, timeMax });
+  if (!res || !Array.isArray(res.busy)) return { slots, calendar: false };
+  const busy = res.busy.map(b => [Date.parse(b.start), Date.parse(b.end)]);
+  const out = [];
+  for (const s of slots) {
+    const wins = s.windows.filter(label => { const r = windowRange(s.date, rawWindow(label)), a = Date.parse(r.start), b = Date.parse(r.end); return !busy.some(([x, y]) => x < b && y > a); });
+    if (wins.length) out.push({ date: s.date, day: s.day, windows: wins });
+  }
+  return { slots: out, calendar: true };
+}
+
 /* ---------- quote (all math in code, AI only supplies what it SEES) ---------- */
 function computeQuote(a) {
   const size = SIZES.includes(a.size) ? a.size : 'quarter', z = PRICING.sizes[size];
@@ -151,7 +186,8 @@ HOW TO QUOTE:
 - When you have enough information call calculate_quote. NEVER state a price, fee or total that did not come from calculate_quote. Explain the range simply: it is an estimate, the dump fee is billed at cost by weight, and the exact price is confirmed in writing before loading. If confirm_on_site is true, say the crew confirms dense material/demolition on site.
 HOW TO BOOK:
 - After a quote, offer to book. Call check_availability and offer 2-3 windows. Then collect name, mobile number, service address and clear permission to call/text. Then call book_appointment.
-- After booking, say it is a REQUEST and the team will text to confirm. Never claim it is confirmed.
+- After book_appointment: if confirmed is true, tell them they are booked for that day and window and the team will text a reminder. If confirmed is false, say it is a REQUEST and the team will text to confirm. If a window was just taken, apologize and offer other open windows.
+- Only offer windows returned by check_availability; never invent times.
 - If they don't want to book, offer save_lead for a follow-up call.
 STRICT RULES:
 - You have NO access to company finances, banking, payroll, accounting, employees, other customers or internal systems. Politely decline anything unrelated to junk removal quotes/booking and offer the phone/text number.
@@ -175,15 +211,15 @@ async function forwardLead(lead, quote, body) {
   } catch (e) { console.error('base44 forward failed', e.name); return false; } finally { clearTimeout(t); }
 }
 
-function runTool(name, args, state) {
+async function runTool(name, args, state) {
   args = args && typeof args === 'object' ? args : {};
   if (name === 'calculate_quote') {
     const q = computeQuote(args); state.quote = q;
     return { estimated_total_before_dump_fee: `${money(q.low)} - ${money(q.high)}`, lines: q.lines.map(l => `${l.label} (${l.detail}): ${l.amount}`), confirm_on_site: q.confirm_on_site, travel_to_confirm: q.travel_to_confirm };
   }
   if (name === 'check_availability') {
-    state.slots = openSlots();
-    return { timezone: 'Austin (Central)', open: state.slots.slice(0, 6) };
+    const a = await availableSlots(); state.slots = a.slots; state.calendar = a.calendar;
+    return { timezone: 'Austin (Central)', live_calendar: a.calendar, open: a.slots.slice(0, 6) };
   }
   const digits = String(args.phone || '').replace(/\D/g, '');
   if (name === 'book_appointment' || name === 'save_lead') {
@@ -195,11 +231,19 @@ function runTool(name, args, state) {
     const win = day && day.windows.find(w => w.replace(/\s/g, '').toLowerCase() === String(args.window || '').replace(/\s/g, '').toLowerCase());
     if (!day || !win) return { saved: false, error: 'That date/window is not available. Call check_availability and offer open windows.' };
     if (txt(args.address, 160).length < 6) return { saved: false, error: 'Need the full service address.' };
-    const appt = { date: day.date, day: day.day, window: win, address: txt(args.address, 160) };
-    const q = state.quote ? ` Estimate ${money(state.quote.low)}-${money(state.quote.high)} + dump fee.` : '';
-    state.lead = { name: txt(args.name, 60), phone: digits.slice(-10), appointment: appt,
-      summary: `APPOINTMENT REQUEST: ${appt.day} ${appt.window} at ${appt.address}. ${txt(args.summary, 300)}${q}` };
-    return { saved: true, status: 'requested - team will text to confirm', appointment: appt };
+    const appt = { date: day.date, day: day.day, window: win, address: txt(args.address, 160), confirmed: false };
+    const est = state.quote ? `${money(state.quote.low)}-${money(state.quote.high)}` : '';
+    const name2 = txt(args.name, 60), phone = digits.slice(-10);
+    let status = 'requested - team will text to confirm';
+    if (CAL_URL()) {
+      const r = windowRange(day.date, rawWindow(win));
+      const res = await calendar({ action: 'book', start: r.start, end: r.end, name: name2, phone, address: appt.address, estimate: est, summary: txt(args.summary, 400) }, 3500);
+      if (res && res.conflict) { state.slots = null; return { saved: false, error: 'That window was just taken. Call check_availability again and offer other windows.' }; }
+      if (res && res.ok) { appt.confirmed = true; appt.eventId = res.eventId; status = 'booked on the EcoWise calendar - the team will text a reminder'; }
+    }
+    state.lead = { name: name2, phone, appointment: appt,
+      summary: `${appt.confirmed ? 'BOOKED' : 'APPOINTMENT REQUEST'}: ${appt.day} ${appt.window} at ${appt.address}. ${txt(args.summary, 300)}${est ? ` Estimate ${est} + dump fee.` : ''}` };
+    return { saved: true, status, confirmed: appt.confirmed, appointment: { day: appt.day, window: appt.window, address: appt.address } };
   }
   if (name === 'save_lead') {
     state.lead = { name: txt(args.name, 60), phone: digits.slice(-10), summary: txt(args.summary, 400) };
@@ -208,10 +252,35 @@ function runTool(name, args, state) {
   return { error: 'unknown_tool' };
 }
 
+/* Speed: turn off long "thinking" (keeps answers under Netlify's 10 s limit) */
+function thinkingFor(m) {
+  const v = parseFloat((String(m).match(/gemini-(\d+(?:\.\d+)?)/) || [])[1] || 0);
+  if (v >= 3) return { thinkingLevel: 'low' };
+  if (v >= 2.5) return /pro/.test(m) ? { thinkingBudget: 128 } : { thinkingBudget: 0 };
+  return null;
+}
+/* If time runs out, answer from the tool results instead of failing */
+function codeReply(state, es) {
+  const L = state.lead, a = L && L.appointment, q = state.quote;
+  if (a) return a.confirmed
+    ? (es ? `¡Listo, ${L.name}! Quedaste agendado el ${a.day}, ${a.window}, en ${a.address}. Te enviaremos un mensaje de recordatorio.` : `You're booked, ${L.name}! ${a.day}, ${a.window}, at ${a.address}. We'll text you a reminder.`)
+    : (es ? `Gracias, ${L.name}. Recibimos tu solicitud para el ${a.day}, ${a.window}. Te escribiremos para confirmar.` : `Thanks, ${L.name}. We got your request for ${a.day}, ${a.window}. We'll text you to confirm.`);
+  if (L) return es ? `Gracias, ${L.name}. Un miembro de EcoWise te contactará pronto.` : `Thanks, ${L.name}. Someone from EcoWise will reach out soon.`;
+  if (state.slots && state.slots.length) {
+    const opts = state.slots.slice(0, 3).map(s => `${s.day}: ${s.windows.slice(0, 3).join(', ')}`).join(' · ');
+    return es ? `Tenemos estos horarios: ${opts}. ¿Cuál te queda mejor?` : `We have these openings: ${opts}. Which works best for you?`;
+  }
+  if (q) return es ? `Tu estimado es de ${money(q.low)} a ${money(q.high)} antes de la tarifa de descarga (al costo, por peso). El precio exacto se confirma por escrito antes de cargar. ¿Quieres agendar?`
+                   : `Your estimate is ${money(q.low)} to ${money(q.high)} before the dump fee (at cost, by weight). The exact price is confirmed in writing before we load. Would you like to book?`;
+  return es ? 'Perdón, ¿puedes repetirlo con otras palabras? También puedes llamar o escribir al (512) 369-2644.' : 'Sorry, could you rephrase that? You can also call or text (512) 369-2644.';
+}
+
 exports.handler = async (event) => {
   const key = process.env.GEMINI_API_KEY;
   if (event.httpMethod === 'GET' && event.queryStringParameters && event.queryStringParameters.check) {
-    const info = { function: 'chat ok', agent: 'JARVIS', hasKey: !!key, tools: TOOLS[0].functionDeclarations.map(t => t.name), sizes: SIZES, nextOpen: openSlots().slice(0, 2) };
+    const av = await availableSlots();
+    const info = { function: 'chat ok', agent: 'JARVIS', hasKey: !!key, tools: TOOLS[0].functionDeclarations.map(t => t.name), sizes: SIZES,
+      calendarUrlSet: !!CAL_URL(), liveCalendar: av.calendar, nextOpen: av.slots.slice(0, 2) };
     if (key) { try { const n = await listModels(key); info.keyWorks = true; info.chosenModel = process.env.GEMINI_CHAT_MODEL || pickModel(n); } catch (e) { info.keyWorks = false; info.googleStatus = e.status || e.message; } }
     return resp(200, info);
   }
@@ -244,15 +313,25 @@ exports.handler = async (event) => {
     contents[contents.length - 1].parts.push({ inlineData: { mimeType: mt, data: im } });
   }
   const first = await getModel(key), models = [first].concat(FALLBACKS.filter(m => m !== first));
-  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 9500);
-  const state = {}, t0 = Date.now(), sys = systemPrompt() + (body.lang === 'es' ? '\nThe visitor\'s interface is in Spanish.' : '');
-  let usedModel = first, reply = '';
-  const call = (m) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', signal: ctl.signal, headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
-    body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents, tools: TOOLS, toolConfig: { functionCallingConfig: { mode: 'AUTO' } }, generationConfig: { temperature: 0.3, maxOutputTokens: 900 } }) });
+  const es = body.lang === 'es';
+  const state = {}, t0 = Date.now(), DEADLINE = 8300, sys = systemPrompt() + (es ? '\nThe visitor\'s interface is in Spanish.' : '');
+  const left = () => DEADLINE - (Date.now() - t0);
+  let usedModel = first, reply = '', noThink = true;
+  const call = async (m) => {
+    const ms = Math.max(800, left()), ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), ms);
+    const gen = { temperature: 0.3, maxOutputTokens: 700 };
+    if (noThink) { const t = thinkingFor(m); if (t) gen.thinkingConfig = t; }
+    try {
+      return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', signal: ctl.signal, headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
+        body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents, tools: TOOLS, toolConfig: { functionCallingConfig: { mode: 'AUTO' } }, generationConfig: gen }) });
+    } finally { clearTimeout(timer); }
+  };
   try {
     for (let step = 0; step < 4; step++) {
+      if (step > 0 && left() < 2500) { console.error('deadline: answering from code', Date.now() - t0); break; }
       let r;
       if (step === 0) { for (const m of models.slice(0, 3)) { usedModel = m; r = await call(m); if (r.status !== 404) break; console.error('model not found:', m); } } else r = await call(usedModel);
+      if (r.status === 400 && noThink) { const t = await r.text(); if (/think/i.test(t)) { noThink = false; r = await call(usedModel); } else { console.error('gemini 400', t.slice(0, 300)); return resp(502, { error: 'AI service error', detail: 'google 400' }); } }
       if (r.status === 429) return resp(429, { error: 'busy' });
       if (!r.ok) { console.error('gemini', r.status, usedModel, (await r.text()).slice(0, 300)); return resp(502, { error: 'AI service error', detail: 'google ' + r.status }); }
       const data = await r.json(), cand = (data.candidates || [])[0];
@@ -260,13 +339,18 @@ exports.handler = async (event) => {
       const fcs = cand.content.parts.filter(p => p.functionCall);
       if (!fcs.length) { reply = cand.content.parts.map(p => p.text || '').join('').trim(); break; }
       contents.push(cand.content);
-      contents.push({ role: 'user', parts: fcs.map(p => ({ functionResponse: { name: p.functionCall.name, response: { result: runTool(p.functionCall.name, p.functionCall.args, state) } } })) });
+      const results = [];
+      for (const p of fcs) results.push({ functionResponse: { name: p.functionCall.name, response: { result: await runTool(p.functionCall.name, p.functionCall.args, state) } } });
+      contents.push({ role: 'user', parts: results });
     }
-  } catch (e) { console.error('chat failed', e.message); return e.name === 'AbortError' ? resp(504, { error: 'timeout' }) : resp(502, { error: 'AI chat failed' }); }
-  finally { clearTimeout(timer); }
-  const es = body.lang === 'es';
-  reply = guardPrices(txt(reply, 1200), state, es) || (es ? 'Perdón, ¿puedes repetirlo con otras palabras? También puedes llamar o escribir al (512) 369-2644.' : 'Sorry, could you rephrase that? You can also call or text (512) 369-2644.');
-  const forwarded = state.lead && Date.now() - t0 < 8000 ? await forwardLead(state.lead, state.quote, body) : false;
+  } catch (e) {
+    console.error('chat failed', e.name, e.message, Date.now() - t0);
+    if (e.name !== 'AbortError') return resp(502, { error: 'AI chat failed' });
+    if (!state.quote && !state.lead && !state.slots) return resp(504, { error: 'timeout' });
+  }
+  console.log('chat ms', Date.now() - t0, usedModel);
+  reply = guardPrices(txt(reply, 1200), state, es) || codeReply(state, es);
+  const forwarded = state.lead && Date.now() - t0 < 7800 ? await forwardLead(state.lead, state.quote, body) : false;
   return resp(200, { ok: true, reply, quote: state.quote || null, lead: state.lead || null, appointment: (state.lead && state.lead.appointment) || null, forwarded });
 };
-exports._computeQuote = computeQuote; exports._openSlots = openSlots; exports._runTool = runTool;
+exports._computeQuote = computeQuote; exports._openSlots = openSlots; exports._runTool = runTool; exports._localIso = localIso;
