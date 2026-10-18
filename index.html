@@ -783,7 +783,7 @@ window.addEventListener('load',function(){setTimeout(ga,7000);if('serviceWorker'
         var pr=Math.ceil(lo/5)*5;
         return{lines:L,lo:pr,hi:pr,custom:custom,sum:sum,trav:trav};
       }
-      function summary(o,c){return 'AI estimate: '+t('sz_'+o.res.size)+'; '+(o.city==='austin'?'Austin':o.city==='near'?'nearby city':'other area')+(c.sum.length?'; '+c.sum.join(', '):'')+(o.stairs?'; '+o.stairs+' flight(s) of stairs':'')+(c.custom?'; needs custom quote':'; est. '+(c.lo===c.hi?money(c.lo):money(c.lo)+'-'+money(c.hi))+' incl. est. dump fee');}
+      function summary(o,c){return 'AI estimate: '+t('sz_'+o.res.size)+'; '+(o.city==='austin'?'Austin':o.city==='near'?'nearby city':'other area')+(c.sum.length?'; '+c.sum.join(', '):'')+(o.stairs?'; '+o.stairs+' flight(s) of stairs':'; no stairs (ground level)')+(c.custom?'; needs custom quote':'; est. '+(c.lo===c.hi?money(c.lo):money(c.lo)+'-'+money(c.hi))+' incl. est. dump fee');}
       function show(o){
         var r=o.res,c=compute(r,o.city,o.stairs),sm=summary(o,c),col={high:'#2f7a52',medium:'#a8812a',low:'#a8543c'}[r.confidence]||'#a8812a';
         draw(r.truck_fraction&&r.truck_fraction>0?Math.max(.08,Math.min(1,r.truck_fraction)):CFG.sizes[r.size].f);
@@ -950,7 +950,7 @@ window.addEventListener('load',function(){setTimeout(ga,7000);if('serviceWorker'
       </details>
       <details class="eco-card" style="cursor:pointer;">
         <summary class="font-display font-bold text-base" style="color:#8cc4a2;">What payment methods do you accept?</summary>
-        <p class="text-sm mt-3" style="color:#a9baaf;">We accept cash, credit/debit cards, Zelle, and Venmo. Payment is collected after the job is complete.</p>
+        <p class="text-sm mt-3" style="color:#a9baaf;">We accept cash, credit/debit cards, Zelle, and Venmo. After you book, we send you our service agreement by email or text (EcoWise Pro Manager) to sign and add your payment method. Nothing is charged until the pickup is complete.</p>
       </details>
       <details class="eco-card" style="cursor:pointer;">
         <summary class="font-display font-bold text-base" style="color:#8cc4a2;">Do you recycle or donate items?</summary>
@@ -2641,7 +2641,7 @@ html{scroll-behavior:smooth}
       if(r.status===429)add('assistant',T.busy);
       else if(d.error==='timeout')add('assistant',T.slow);
       else if(!r.ok||!d.ok){add('assistant',T.err+' [HTTP '+r.status+(d.error?' '+d.error:'')+']');addCall()}
-      else{var rp=String(d.reply||'').replace(/\*\*|__/g,'');if(d.quote)card(d.quote);add('assistant',rp);msgs.push({role:'assistant',text:rp});if(d.slots&&d.slots.length&&!d.appointment)slotPick(d.slots);if(d.lead&&!leadSent){leadSent=true;sendLead(d.lead,!d.forwarded);add('note',T.saved)}}
+      else{var rp=String(d.reply||'').replace(/\*\*|__/g,'');if(d.quote)card(d.quote);add('assistant',rp);msgs.push({role:'assistant',text:rp});if(d.slots&&d.slots.length&&!d.appointment)slotPick(d.slots);if(d.lead&&!leadSent){leadSent=true;sendLead(d.lead,!d.forwarded);if(!(d.slots&&d.slots.length))add('note',T.saved)}}
     }catch(e){console.error('chat error',e);typing(false);add('assistant',T.err+' ['+(e.message||'network')+']');addCall()}
     busy=false;
   }
