@@ -43,8 +43,8 @@
   },
   "items": {
     "fridge": 95,
-    "mattress": 45,
-    "box_spring": 45,
+    "mattress": 50,
+    "box_spring": 50,
     "washer_dryer": 40,
     "paint": 15,
     "tv": 20,
@@ -58,56 +58,64 @@
       "range": [
         90,
         100
-      ]
+      ],
+      "label_es": "Refrigerador / congelador (retiro de fre\u00f3n + entrada)"
     },
     "mattress": {
       "label": "Mattress (landfill gate fee)",
       "range": [
         40,
         60
-      ]
+      ],
+      "label_es": "Colch\u00f3n (cuota del botadero)"
     },
     "box_spring": {
       "label": "Box spring (landfill gate fee)",
       "range": [
         40,
         60
-      ]
+      ],
+      "label_es": "Box spring (cuota del botadero)"
     },
     "washer_dryer": {
       "label": "Washer / dryer",
       "range": [
         40,
         40
-      ]
+      ],
+      "label_es": "Lavadora / secadora"
     },
     "paint": {
       "label": "Paint can (solidification)",
       "range": [
         15,
         15
-      ]
+      ],
+      "label_es": "Lata de pintura (solidificaci\u00f3n)"
     },
     "tv": {
       "label": "TV / monitor (e-waste)",
       "range": [
         20,
         20
-      ]
+      ],
+      "label_es": "TV / monitor (residuo electr\u00f3nico)"
     },
     "tire": {
       "label": "Tire",
       "range": [
         15,
         15
-      ]
+      ],
+      "label_es": "Llanta"
     },
     "tire_rim": {
       "label": "Tire with rim",
       "range": [
         25,
         25
-      ]
+      ],
+      "label_es": "Llanta con rin"
     }
   },
   "dense_per_cubic_yard": [
@@ -169,6 +177,8 @@
       "san marcos": 32
     }
   },
+  "price_point": 0.5,
+  "_price_point_comment": "One single price: 0 = lowest of each range, 1 = highest, 0.5 = middle. Rounded up to the next $5.",
   "schedule": {
     "timezone": "America/Chicago",
     "days": [
