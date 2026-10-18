@@ -770,7 +770,7 @@ input::placeholder,textarea::placeholder{color:#6f8a7a;}
           +'<div class="flex flex-wrap gap-3" style="margin-top:14px"><button type="button" id="aiBook" class="btn-copper px-5 py-3 rounded-full text-sm">'+t('book')+'</button><a class="ai-ghost px-5 py-3 text-sm" href="'+sms+'">'+t('text')+'</a></div>'
           +'<div class="flex flex-wrap gap-4 items-center" style="margin-top:12px"><a href="tel:+15123692644" class="text-sm font-display font-bold" style="color:#d9b078">'+t('call')+'</a><button type="button" id="aiAgain" class="text-xs font-display font-bold" style="background:none;border:none;color:#8fb59f;cursor:pointer">\u21ba '+t('again')+'</button></div>';
         $('aiIdle').hidden=true;$('aiLoad').hidden=true;$('aiOut').hidden=false;o.sm=sm;o.c=c;
-        $('aiBook').onclick=function(){var ch=document.getElementById('ecoChat');if(ch&&ch._book){var es2=lang==='es';ch._book(es2?('Quiero agendar este estimado con foto: '+sm+'.'+(o.address?' Direcci\u00f3n de recogida: '+o.address+'.':'')+' Mi nombre es '+o.name+', mi celular '+o.phone+' y acepto que me contacten por llamada o texto.'+(o.notes?' Notas: '+o.notes:'')):('I want to book this photo estimate: '+sm+'.'+(o.address?' Pickup address: '+o.address+'.':'')+' My name is '+o.name+', my mobile is '+o.phone+' and I agree to be contacted by call or text.'+(o.notes?' Notes: '+o.notes:'')),o.blobs);return;}location.href='sms:+15123692644?&body='+encodeURIComponent('Hi! '+sm+(o.address?' Address: '+o.address+'.':'')+" I'd like to book this.");};
+        $('aiBook').onclick=function(){var ch=document.getElementById('ecoChat');if(ch&&ch._book){var es2=lang==='es';ch._book(es2?('Quiero agendar este estimado con foto: '+sm+'.'+(o.address?' Direcci\u00f3n de recogida: '+o.address+'.':'')+' Mi nombre es '+o.name+', mi celular '+o.phone+' y acepto que me contacten por llamada o texto.'+(o.notes?' Notas: '+o.notes:'')):('I want to book this photo estimate: '+sm+'.'+(o.address?' Pickup address: '+o.address+'.':'')+' My name is '+o.name+', my mobile is '+o.phone+' and I agree to be contacted by call or text.'+(o.notes?' Notes: '+o.notes:'')),o.blobs,(function(){var r=o.res||{},sv=lang;function mk(lg){lang=lg;var c=compute(r,o.city,o.stairs),gl={};gl[t('base')]='load';gl[t('labor')]='load';gl[t('stairsL')]='load';gl[t('fuel')]='travel';var out=c.lines.map(function(l){return{group:gl[l[0]]||'disposal',label:String(l[0]),detail:String(l[1]),amount:String(l[2])}});return{price:c.lo,lines:out}}var en=mk('en'),es3=mk('es');lang=sv;return{price:o.c.lo,size:r.size,special:r.special||{},est_weight_lbs:+r.est_weight_lbs||0,heavy_material:!!r.heavy_material,loads:+r.loads||1,stairs:o.stairs||0,city:o.city,address:o.address||'',lines_en:en.lines,lines_es:es3.lines}})());return;}location.href='sms:+15123692644?&body='+encodeURIComponent('Hi! '+sm+(o.address?' Address: '+o.address+'.':'')+" I'd like to book this.");};
         $('aiAgain').onclick=reset;
       }
       function reset(){last=null;$('aiOut').hidden=true;$('aiOut').innerHTML='';$('aiIdle').hidden=false;draw(0);$('aiErr').textContent='';files.forEach(function(f){URL.revokeObjectURL(f.url)});files=[];thumbs();}
@@ -2205,7 +2205,7 @@ document.addEventListener('click', function(e){
 (function(){
   var $=function(i){return document.getElementById(i)},FN='/.netlify/functions/chat';
   var b=$('ecoChatBtn'),w=$('ecoChat'),log=$('ecLog'),inp=$('ecInput'),fileIn=$('ecFile'),thumbs=$('ecThumbs'),chips=$('ecChips'),x=w.querySelector('header button');
-  var es=/^es/i.test(navigator.language||''),msgs=[],imgs=[],busy=false,started=false,leadSent=false,lastBlobs=[];
+  var es=/^es/i.test(navigator.language||''),msgs=[],imgs=[],busy=false,started=false,leadSent=false,lastBlobs=[],lockedQuote=null;
   var T={en:{title:'JARVIS \u00b7 EcoWise',hi:"Hi! I'm JARVIS, EcoWise's AI quote and booking agent. Tell me what you'd like removed (or send a photo) and I'll give you an estimate.",ph:'Type your message\u2026',foot:"AI assistant \u00b7 estimates aren't final prices \u00b7 please don't share payment or bank info.",c:['Get a quote','What can you take?','Prices'],q:['I want a quote for junk removal','What items can you take?','How much does it cost?'],err:"Sorry, I can't answer right now.",call:'Call or text (512) 369-2644',busy:'Many people are chatting right now. Please try again in a minute.',slow:'That took too long. Please try again, or text us at (512) 369-2644.',saved:"\u2713 Saved \u2014 we'll contact you soon.",est:'Estimated total incl. dump fee',custom:'Custom quote \u2014 send us a photo',photo:'photo(s)'},
     es:{title:'JARVIS \u00b7 EcoWise',hi:'\u00a1Hola! Soy JARVIS, el agente de cotizaciones y citas de EcoWise. Cu\u00e9ntame qu\u00e9 quieres desechar (o manda una foto) y te doy un estimado.',ph:'Escribe tu mensaje\u2026',foot:'Asistente de IA \u00b7 los estimados no son precios finales \u00b7 no compartas datos de pago ni bancarios.',c:['Pedir cotizaci\u00f3n','\u00bfQu\u00e9 se pueden llevar?','Precios'],q:['Quiero una cotizaci\u00f3n para retirar basura','\u00bfQu\u00e9 art\u00edculos se pueden llevar?','\u00bfCu\u00e1nto cuesta?'],err:'Lo siento, no puedo responder ahora.',call:'Llama o escribe al (512) 369-2644',busy:'Mucha gente est\u00e1 chateando ahora. Intenta de nuevo en un minuto.',slow:'Tard\u00f3 demasiado. Intenta de nuevo, o escr\u00edbenos al (512) 369-2644.',saved:'\u2713 Guardado \u2014 te contactaremos pronto.',est:'Total estimado con tarifa de descarga',custom:'Cotizaci\u00f3n personalizada \u2014 m\u00e1ndanos una foto',photo:'foto(s)'}}[es?'es':'en'];
   $('ecTitle').textContent=T.title;inp.placeholder=T.ph;$('ecFoot').textContent=T.foot;
@@ -2235,7 +2235,7 @@ document.addEventListener('click', function(e){
     try{
       var sendImgs=await Promise.all(blobs.map(b64));
       var keep=[];try{keep=await Promise.all(lastBlobs.slice(0,2).map(b64))}catch(e){}
-      var r=await fetch(FN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs.slice(-12),images:sendImgs,photos:keep,lang:es?'es':'en',hp:$('ecHp').value})});
+      var r=await fetch(FN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs.slice(-12),images:sendImgs,photos:keep,locked:lockedQuote,lang:es?'es':'en',hp:$('ecHp').value})});
       var d={};try{d=await r.json()}catch(e){}typing(false);
       if(r.status===429)add('assistant',T.busy);
       else if(d.error==='timeout')add('assistant',T.slow);
@@ -2253,7 +2253,7 @@ document.addEventListener('click', function(e){
   inp.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.isComposing){e.preventDefault();send(inp.value)}});
   document.addEventListener('keydown',function(e){if(e.key==='Escape'&&w.classList.contains('open'))open(false)});
   w._test={send:send};
-  w._book=function(t,bl){open(true);if(bl&&bl.length)lastBlobs=bl.slice(0,2);setTimeout(function(){send(t)},200)};
+  w._book=function(t,bl,lq){open(true);if(bl&&bl.length)lastBlobs=bl.slice(0,2);if(lq)lockedQuote=lq;setTimeout(function(){send(t)},200)};
 })();
 </script>
 
