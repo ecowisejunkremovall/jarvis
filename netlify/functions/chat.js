@@ -191,7 +191,9 @@ function computeQuote(a) {
 
   const confirmOnSite = !!(yd || dh || loads > 1);
   const tp = partsInTz(new Date(), SCHED.timezone), qid = 'EW-' + String(tp.y).slice(2) + String(tp.m).padStart(2, '0') + String(tp.d).padStart(2, '0') + '-' + Math.floor(1000 + Math.random() * 9000);
-  return { id: qid, custom: false, confirm_on_site: confirmOnSite, dump_included: true, size, loads, miles, low: Math.ceil(lo / 5) * 5, high: Math.ceil(lo / 5) * 5, price: Math.ceil(lo / 5) * 5, lines, travel_to_confirm: miles == null && city !== 'austin' };
+  const sur = {}; SUR_KEYS.forEach(k => { const n = clampInt(a[k], 0, 40); if (n) sur[k] = n; });
+  const basis = { size, loads, est_weight_lbs: lbs, stairs: st, dense_cubic_yards: yd, demolition_hours: dh, sur, items: txt(a.items_seen || a.demolition_item || '', 120) };
+  return { basis, id: qid, custom: false, confirm_on_site: confirmOnSite, dump_included: true, size, loads, miles, low: Math.ceil(lo / 5) * 5, high: Math.ceil(lo / 5) * 5, price: Math.ceil(lo / 5) * 5, lines, travel_to_confirm: miles == null && city !== 'austin' };
 }
 
 /* ---------- Big projects: several areas (attic, basement, garage, bedrooms, yard...) added up into ONE quote ---------- */
@@ -204,6 +206,15 @@ function cleanArea(a) {
   SUR_KEYS.forEach(k => { const q = clampInt(a[k], 0, 40); if (q) o[k] = q; });
   return o.area && o.cubic_yards > 0 ? o : null;
 }
+const SIGN_KEY = () => process.env.GOOGLE_SCRIPT_SECRET || process.env.GEMINI_API_KEY || 'ecowise';
+function quoteCore(q) { return { id: q.id, price: q.price, low: q.low, high: q.high, size: q.size, loads: q.loads, miles: q.miles == null ? null : q.miles, address: q.address || '', confirm_on_site: !!q.confirm_on_site,
+  basis: q.basis && !q.project ? { size: q.basis.size, loads: q.basis.loads, est_weight_lbs: q.basis.est_weight_lbs || 0, stairs: q.basis.stairs || 0, dense_cubic_yards: q.basis.dense_cubic_yards || 0, demolition_hours: q.basis.demolition_hours || 0, sur: q.basis.sur || {} } : null,
+  areaName: q.areaName || '', project: !!q.project, total_cubic_yards: q.total_cubic_yards || null, truck_loads: q.truck_loads || '', walkthrough: !!q.walkthrough,
+  lines: (q.lines || []).slice(0, 30).map(l => ({ group: l.group, key: l.key || '', label: String(l.label), detail: String(l.detail || ''), value: l.value || 0, amount: String(l.amount) })) }; }
+function signQuote(q) { const c = quoteCore(q); c.sig = require('crypto').createHmac('sha256', SIGN_KEY()).update(JSON.stringify(c)).digest('hex').slice(0, 40); return c; }
+function verifyQuote(o) { try { if (!o || !o.sig || !Array.isArray(o.lines)) return null; const c = quoteCore(o); const s = require('crypto').createHmac('sha256', SIGN_KEY()).update(JSON.stringify(c)).digest('hex').slice(0, 40); return s === o.sig ? c : null; } catch (e) { return null; } }
+const YARDS = { single: 2, quarter: 4, half: 8, three_quarter: 12, full: 16 };
+function areaFromBasis(b, name) { if (!b) return null; return cleanArea(Object.assign({ area: name, cubic_yards: (YARDS[b.size] || 4) * (b.loads || 1), est_weight_lbs: b.est_weight_lbs, stairs: b.stairs, dense_cubic_yards: b.dense_cubic_yards, demolition_hours: b.demolition_hours, items: b.items || '' }, b.sur || {})); }
 function sizeForYards(y) { return y <= 2 ? 'single' : y <= 4 ? 'quarter' : y <= 8 ? 'half' : y <= 12 ? 'three_quarter' : 'full'; }
 function projectQuote(a, areas) {
   const total = areas.reduce((s, x) => s + x.cubic_yards, 0), nFull = Math.floor(total / 16 + 1e-9), rem = Math.round((total - nFull * 16) * 10) / 10;
@@ -250,7 +261,7 @@ function cleanEmail(v) { const e = String(v || '').trim().toLowerCase(); return 
 function pdfData(q, lang, who) {
   if (!q) return null;
   const qq = quoteFor(q, lang);
-  return { lang, id: q.id, price: money(q.price), name: who.name || '', phone: who.phone || '', email: who.email || '', address: who.address || '', when: who.when || '', pay: who.pay ? payLabel(who.pay, lang) : '',
+  return { lang, id: q.id, prelim: !!q.walkthrough, price: money(q.price), name: who.name || '', phone: who.phone || '', email: who.email || '', address: who.address || '', when: who.when || '', pay: who.pay ? payLabel(who.pay, lang) : '',
     confirm_on_site: !!q.confirm_on_site, lines: qq.lines.map(l => ({ group: l.group, label: l.label, detail: l.detail, amount: l.amount })) };
 }
 function quoteFor(q, lang) { return q && lang === 'es' ? Object.assign({}, q, { lines: linesEs(q.lines) }) : q; }
@@ -291,6 +302,8 @@ const TOOLS = [{ functionDeclarations: [
       size: { type: 'STRING', enum: SIZES, description: 'load size by volume' },
       loads: { type: 'INTEGER', description: 'number of truck loads, normally 1' },
       address: { type: 'STRING', description: 'pickup street address (or at least street + ZIP) exactly as the visitor gave it; used to calculate mileage' },
+      area_name: { type: 'STRING', description: 'optional: where these items are (e.g. Garage, Backyard)' },
+      items_seen: { type: 'STRING', description: 'short list of the main items' },
       city: { type: 'STRING', enum: ['austin', 'near', 'other'], description: 'austin = Austin; near = Round Rock, Cedar Park, Pflugerville, Georgetown, Leander, Buda, Kyle or San Marcos; other = anywhere else' },
       stairs: { type: 'INTEGER', description: 'flights of stairs without elevator' },
       dense_cubic_yards: { type: 'NUMBER', description: 'cubic yards of dirt, concrete, rock, tile or heavy debris SEEN or mentioned; 0 if none' },
@@ -336,11 +349,12 @@ HOW TO QUOTE:
 - When you have all the intake details, in the SAME turn call calculate_quote AND save_lead (name, mobile, a summary with the items and the quote id, consent true). Then continue with check_availability as described below.
 - Call calculate_quote ONLY ONCE per job, after you have the pickup address (mileage is calculated from the address inside that call, so the first price is already the final one). Never give a price before that and never give a second price, unless the visitor adds or changes items.
 - When you have enough information call calculate_quote. NEVER state a price, fee or total that did not come from calculate_quote. Give the ONE price from calculate_quote (never a range). Explain simply: it already includes an estimated dump/disposal fee (the final dump fee is adjusted to the actual landfill ticket), and the exact price is confirmed in writing before loading. If confirm_on_site is true, say the crew confirms dense material/demolition on site.
+ONE JOB = ONE PRICE: all photos and items in this conversation are ONE job at ONE address unless the visitor clearly says otherwise. NEVER give a separate price per photo. If the photos show different places (e.g. garage + backyard), call add_area once per place and then calculate_quote ONCE for the combined total. If they send more photos after you already quoted, those are additional areas: call add_area for the new place(s) (the earlier quote is included automatically) and calculate_quote again; the new total replaces the old one, and say so clearly ("your updated total for everything is...").
 BIG PROJECTS (whole house, estate or move-out cleanout, several rooms or areas like attic, basement, garage, bedrooms, yard, shed):
-- Work area by area like a professional estimator. Ask the visitor to send 1-3 photos of each area, one area at a time (or describe it).
+- Work area by area like a professional estimator. Visitors can send up to 5 photos per message. When several photos arrive at once, identify the area of each photo from visual clues (attic rafters/insulation, garage door/concrete floor, bed = bedroom, grass/fence = yard, washer = laundry, basement walls) and group them by area; record each area with add_area. If you cannot tell which area a photo is, or whether two photos show the same pile from different angles, ask briefly instead of counting it twice. Then ask if there are more areas.
 - For each area call add_area with your volume estimate in cubic yards (use the references in the tool), the main items, weight, stairs/access and special items (mattress, fridge, paint, tires...). Keep a short running summary, e.g. "So far: Attic ~4 cu yd, Garage ~12 cu yd. Any other area?".
 - When they say that's everything (and you have the intake details), call calculate_quote ONCE: it adds up all areas automatically into one price with multiple truck loads if needed. Then explain the total in one or two sentences (areas, approximate truck loads).
-- For very large projects (more than 2 truck loads or 4+ areas) also offer a free on-site walkthrough or video call, and say the crew confirms on site before starting. If the visitor prefers, they can do the walkthrough first.
+- LARGE PROJECTS REQUIRE A VISIT: when calculate_quote returns walkthrough_required, the price is a PRELIMINARY estimate. Explain it warmly: for a project this size an EcoWise team member comes to see it in person (FREE, about 20-30 minutes) to confirm the final price, and then the pickup is scheduled. Offer the open windows for the FREE walkthrough and book it with book_appointment (it is booked as a walkthrough automatically). Do NOT ask for the payment method for a walkthrough; that is handled after the visit.
 HOW TO BOOK:
 - If the visitor arrives with a PHOTO ESTIMATE summary (size, items, total, address, stairs, name, mobile and consent), the intake is ALREADY COMPLETE: do not ask anything again. Thank them by first name, call calculate_quote (the price stays locked), save_lead and check_availability in the same turn, and offer the open windows (the email and payment method are asked when they pick a window). Only if the pickup address is missing, ask just for the address.
 - ORDER OF A QUOTE ANSWER: right after calculate_quote, in the SAME turn ALSO call check_availability (do not wait for the visitor to say yes). The itemized quote card is shown to the visitor ABOVE your message, so do not list the line items again. Then write ONE short message: (1) the single price and, in one sentence, that it covers labor, loading, travel and the estimated dump fee (adjusted to the landfill ticket) and is confirmed in writing before loading; (2) the next 2-3 open windows (day + window) from check_availability; (3) ask which one they prefer. Plain text only, no markdown, no asterisks.
@@ -371,6 +385,7 @@ async function runTool(name, args, state) {
   args = args && typeof args === 'object' ? args : {};
   if (name === 'add_area') {
     const ar = cleanArea(args); if (!ar) return { saved: false, error: 'Need an area name and cubic_yards > 0.' };
+    if (!state.project && state.quote && state.quote.basis && !state.quote.project && !state.quotedNow && !state.lockedQuote) { const seed = areaFromBasis(state.quote.basis, state.quote.areaName || (state.lang === 'es' ? 'Primeras fotos' : 'First photos')); if (seed) state.project = { areas: [seed] }; }
     state.project = state.project || { areas: [] };
     const i = state.project.areas.findIndex(x => x.area.toLowerCase() === ar.area.toLowerCase());
     if (i >= 0) state.project.areas[i] = ar; else if (state.project.areas.length < 12) state.project.areas.push(ar);
@@ -378,17 +393,27 @@ async function runTool(name, args, state) {
     return { saved: true, areas_so_far: state.project.areas.map(x => `${x.area}: ~${x.cubic_yards} cu yd`), total_cubic_yards: Math.round(tot * 10) / 10, approx_truck_loads: Math.round(tot / 16 * 10) / 10 };
   }
   if (name === 'calculate_quote') {
-    if (state.lockedQuote) { const q = state.lockedQuote; return { quote_id: q.id, price_including_estimated_dump_fee: money(q.price), locked: true, note: 'Price locked from the photo estimate. Use exactly this price.', lines: q.lines.map(l => `${l.label} (${l.detail}): ${l.amount}`) }; }
+    if (state.lockedQuote) { const q = state.lockedQuote; state.quotedNow = true; return { quote_id: q.id, price_including_estimated_dump_fee: money(q.price), locked: true, note: 'Price locked from the photo estimate. Use exactly this price.', lines: q.lines.map(l => `${l.label} (${l.detail}): ${l.amount}`) }; }
     const prev = state.prev, norm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const addr = txt(args.address || (prev && prev.address) || '', 160);
     if (addr.length < 5) return { error: 'No price yet: ask for the full pickup address first (mileage is calculated from it).' };
     args.address = addr; state.address = addr;
     if (prev && prev.miles != null && norm(prev.address) === norm(addr)) args.miles = prev.miles;          // same address -> same mileage, same price
     else { const mi = await milesFromAddress(addr); if (mi) args.miles = mi; }
+    if (state.mergeN && state.project) { const nb = computeQuote(Object.assign({}, args, { address: addr })).basis, ar = areaFromBasis(nb, txt(args.area_name, 40) || (state.lang === 'es' ? 'Área ' : 'Area ') + (++state.mergeN)); if (ar && state.project.areas.length < 12) state.project.areas.push(ar); }
+    else if (!(state.project && state.project.areas && state.project.areas.length) && state.quotedNow && state.quote && state.quote.basis && !state.quote.project) {
+      // called again in the same turn (e.g. one call per photo of different places): merge everything into ONE job
+      const n0 = (state.mergeN = (state.mergeN || 1) + 1), es0 = state.lang === 'es';
+      const first = areaFromBasis(state.quote.basis, state.quote.areaName || (es0 ? 'Área 1' : 'Area 1'));
+      const nb = computeQuote(Object.assign({}, args, { address: addr })).basis, second = areaFromBasis(nb, txt(args.area_name, 40) || (es0 ? 'Área ' : 'Area ') + n0);
+      state.project = { areas: [first, second].filter(Boolean) };
+    }
     const areas = state.project && state.project.areas && state.project.areas.length ? state.project.areas : null;
-    const q = areas ? projectQuote(args, areas) : computeQuote(args); q.address = addr; state.quote = q;
+    const q = areas ? projectQuote(args, areas) : computeQuote(args); q.address = addr;
+    q.walkthrough = !!((q.project && (q.total_cubic_yards > 32 || areas.length >= 4)) || q.loads > 2); if (!areas && args.area_name) q.areaName = txt(args.area_name, 40);
+    state.quote = q; state.quotedNow = true;
     if (prev && prev.price && q.price !== prev.price) q.revised_from = prev.price;
-    return { quote_id: q.id, price_including_estimated_dump_fee: money(q.price), lines: q.lines.map(l => `${l.label} (${l.detail}): ${l.amount}`), confirm_on_site: q.confirm_on_site, travel_to_confirm: q.travel_to_confirm, project: q.project ? { areas: areas.length, total_cubic_yards: q.total_cubic_yards, truck_loads: q.truck_loads } : undefined, note: 'Mileage from the pickup address is already included. This is the ONE final price; do not quote again unless the visitor adds or changes items.' };
+    return { quote_id: q.id, price_including_estimated_dump_fee: money(q.price), lines: q.lines.map(l => `${l.label} (${l.detail}): ${l.amount}`), confirm_on_site: q.confirm_on_site, travel_to_confirm: q.travel_to_confirm, project: q.project ? { areas: areas.length, total_cubic_yards: q.total_cubic_yards, truck_loads: q.truck_loads } : undefined, walkthrough_required: q.walkthrough || undefined, note: q.project ? 'ONE combined price for ALL areas/photos of this job (mileage included). Give only this total; never a separate price per photo.' : 'Mileage from the pickup address is already included. This is the ONE final price; do not quote again unless the visitor adds or changes items.' };
   }
   if (name === 'check_availability') {
     const a = await availableSlots(); state.slots = a.slots; state.calendar = a.calendar;
@@ -404,20 +429,21 @@ async function runTool(name, args, state) {
     const win = day && day.windows.find(w => w.replace(/\s/g, '').toLowerCase() === String(args.window || '').replace(/\s/g, '').toLowerCase());
     if (!day || !win) return { saved: false, error: 'That date/window is not available. Call check_availability and offer open windows.' };
     if (txt(args.address, 160).length < 6) return { saved: false, error: 'Need the full service address.' };
-    const appt = { date: day.date, day: day.day, window: win, address: txt(args.address, 160), confirmed: false };
+    const walk = !!(state.quote && state.quote.walkthrough);
+    const appt = { date: day.date, day: day.day, window: win, address: txt(args.address, 160), confirmed: false, visit: walk ? 'walkthrough' : 'pickup' };
     const est = state.quote ? `${money(state.quote.price)} (Quote ${state.quote.id})` : '';
     const name2 = txt(args.name, 60), phone = digits.slice(-10), email = cleanEmail(args.email) || (state.lead && state.lead.email) || '', pay = payKey(args.payment_method);
     let status = 'requested - team will text to confirm';
     if (CAL_URL()) {
       const r = windowRange(day.date, rawWindow(win));
       const pdfInfo = pdfData(state.quote, state.lang, { name: name2, phone, email, pay, address: appt.address, when: (state.lang === 'es' ? new Date(appt.date + 'T12:00:00Z').toLocaleDateString('es-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' }) : appt.day) + ', ' + appt.window });
-      const res = await calendar({ action: 'book', start: r.start, end: r.end, name: name2, phone, customer_email: email, payment_method: payLabel(pay, 'en'), lang: state.lang, address: appt.address, estimate: est, summary: txt(args.summary, 300), crew_notes: txt(args.crew_notes, 800), quote_lines: state.quote ? state.quote.lines.map(l => `${l.label} - ${l.detail}: ${l.amount}`).join('\n') : '', photos: state.photos || [], pdf: pdfInfo, pdf_b64: await pdfB64(pdfInfo, state.photos) }, 6500);
+      const res = await calendar({ action: 'book', visit: appt.visit, start: r.start, end: r.end, name: name2, phone, customer_email: email, payment_method: payLabel(pay, 'en'), lang: state.lang, address: appt.address, estimate: est, summary: txt(args.summary, 300), crew_notes: txt(args.crew_notes, 800), quote_lines: state.quote ? state.quote.lines.map(l => `${l.label} - ${l.detail}: ${l.amount}`).join('\n') : '', photos: state.photos || [], pdf: pdfInfo, pdf_b64: await pdfB64(pdfInfo, state.photos) }, 6500);
       if (res && res.conflict) { state.slots = null; return { saved: false, error: 'That window was just taken. Call check_availability again and offer other windows.' }; }
-      if (res && res.ok) { appt.confirmed = true; appt.eventId = res.eventId; status = 'booked on the EcoWise calendar - the team will text a reminder'; }
+      if (res && res.ok) { appt.confirmed = true; appt.eventId = res.eventId; status = walk ? 'FREE on-site walkthrough booked on the EcoWise calendar - the crew confirms the final price at the visit, then schedules the pickup' : 'booked on the EcoWise calendar - the team will text a reminder'; }
     }
     state.lead = { name: name2, phone, email, pay, appointment: appt, address: appt.address, photos: state.photos || [], lang: state.lang,
-      summary: `${appt.confirmed ? 'BOOKED' : 'APPOINTMENT REQUEST'}: ${appt.day} ${appt.window} at ${appt.address}. ${txt(args.summary, 300)}${est ? ` Estimate ${est} incl. est. dump fee.` : ''}` };
-    return { saved: true, status, confirmed: appt.confirmed, quote_emailed_to: appt.confirmed && email ? email : null, payment: payLabel(pay, state.lang) || null, appointment: { day: appt.day, window: appt.window, address: appt.address } };
+      summary: `${walk ? 'WALKTHROUGH ' : ''}${appt.confirmed ? 'BOOKED' : 'APPOINTMENT REQUEST'}: ${appt.day} ${appt.window} at ${appt.address}. ${txt(args.summary, 300)}${est ? ` Estimate ${est} incl. est. dump fee.` : ''}` };
+    return { saved: true, status, visit: appt.visit, confirmed: appt.confirmed, quote_emailed_to: appt.confirmed && email ? email : null, payment: payLabel(pay, state.lang) || null, appointment: { day: appt.day, window: appt.window, address: appt.address } };
   }
   if (name === 'save_lead') {
     state.lead = { name: txt(args.name, 60), phone: digits.slice(-10), email: cleanEmail(args.email), summary: txt(args.summary, 400), address: state.address || '', photos: state.photos || [], lang: state.lang };
@@ -499,6 +525,7 @@ async function buildQuotePdf(p, photos) {
   const hx = logo ? M + 62 : M;
   text('EcoWise Junk Removal', hx, y - 22, 19, bold, C.dark);
   text('Austin, TX  ·  (512) 369-2644  ·  ecowisejunkremovall.com', hx, y - 38, 9, reg, C.gray);
+  if (p.prelim) T.title = es ? 'ESTIMADO PRELIMINAR' : 'PRELIMINARY ESTIMATE';
   const tw = bold.widthOfTextAtSize(safe(T.title), 13);
   text(T.title, W - M - tw, y - 18, 13, bold, C.copper);
   const today = new Date().toLocaleDateString(es ? 'es-US' : 'en-US', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -554,7 +581,8 @@ async function buildQuotePdf(p, photos) {
   text(T.incl, M + 14, y - 28, 8, reg, C.gold);
   const pr = safe(p.price); text(pr, W - M - 14 - bold.widthOfTextAtSize(pr, 22), y - 26, 22, bold, C.white);
   y -= 56;
-  if (p.confirm_on_site) { ensure(16); text(T.onsite, M, y, 8.5, reg, C.copper); y -= 14; }
+  if (p.prelim) { ensure(16); text(es ? 'Proyecto grande: precio final confirmado en la visita gratuita en sitio.' : 'Large project: final price confirmed at the free on-site walkthrough.', M, y, 8.5, bold, C.copper); y -= 14; }
+  else if (p.confirm_on_site) { ensure(16); text(T.onsite, M, y, 8.5, reg, C.copper); y -= 14; }
   { const pl = wrap(T.payNote, 8.5, bold, W - 2 * M); ensure(pl.length * 11 + 6); pl.forEach(s2 => { text(s2, M, y, 8.5, bold, C.copper); y -= 11; }); y -= 4; }
 
   // Terms
@@ -644,7 +672,7 @@ exports.handler = async (event) => {
     contents.push({ role, parts: [{ text }] });
   }
   if (!contents.length || contents[contents.length - 1].role !== 'user') return resp(400, { error: 'No message' });
-  const imgs = Array.isArray(body.images) ? body.images.slice(0, 3) : [];
+  const imgs = Array.isArray(body.images) ? body.images.slice(0, 5) : [];
   for (const im of imgs) {
     if (typeof im !== 'string' || im.length > 1600000 || !/^[A-Za-z0-9+/=]+$/.test(im)) return resp(400, { error: 'Invalid image' });
     const mt = im.startsWith('/9j/') ? 'image/jpeg' : im.startsWith('iVBOR') ? 'image/png' : im.startsWith('UklG') ? 'image/webp' : null; if (!mt) return resp(400, { error: 'Unsupported image' });
@@ -656,9 +684,10 @@ exports.handler = async (event) => {
   const lastUser = (raw.filter(m => m && m.role !== 'assistant').slice(-1)[0] || {}).text;
   const uiLang = body.lang === 'es' ? 'es' : 'en', lang = detectLang(lastUser) || detectLang(raw.filter(m => m && m.role !== 'assistant').slice(-4).map(m => m.text).join(' ')) || uiLang, es = lang === 'es';
   const LN = es ? 'Spanish' : 'English';
-  const pv = body.prev && typeof body.prev === 'object' ? body.prev : null;
+  const pvq = verifyQuote(body.prev), pv = pvq || (body.prev && typeof body.prev === 'object' ? body.prev : null);
   const project = body.project && Array.isArray(body.project.areas) ? { areas: body.project.areas.slice(0, 12).map(cleanArea).filter(Boolean) } : null;
   const state = { photos, lang, project, prev: pv ? { id: txt(pv.id, 40), price: clampNum(pv.price, 0, 100000), miles: pv.miles == null ? null : clampNum(pv.miles, 0, 300), address: txt(pv.address, 160) } : null }, t0 = Date.now(), DEADLINE = 8300, sys = systemPrompt() + `\nLANGUAGE RULE: The visitor's device/system language is ${uiLang === 'es' ? 'Spanish' : 'English'}. Their latest message is in ${LN}. Write your ENTIRE reply in ${LN} only. Do not use the other language, not even a greeting.`;
+  if (pvq && !state.quote) state.quote = pvq;                         // the quote given earlier in this conversation (signed, cannot be altered)
   if (body.locked) { try { const lq = await lockedQuote(body.locked, lang); if (lq) { state.quote = lq; state.lockedQuote = lq; if (lq.address) state.address = lq.address; } } catch (e) { console.error('lock failed', e.message); } }
   const lockNote = state.lockedQuote ? `\nPRICE LOCKED: this visitor already received a photo estimate. The final price is ${money(state.lockedQuote.price)} (quote ${state.lockedQuote.id})${state.lockedQuote.mileage_added ? `, which now includes ${state.lockedQuote.mileage_added} mileage because the pickup is outside Austin - mention that briefly` : ''}. Do NOT call calculate_quote and never state any other price. Go straight to check_availability / booking.` : '';
   const left = () => DEADLINE - (Date.now() - t0);
@@ -696,7 +725,7 @@ exports.handler = async (event) => {
   }
   console.log('chat ms', Date.now() - t0, usedModel);
   let codeSlots = false;                                              // after a quote, always show open windows (even if the model forgot to check)
-  if (state.quote && !state.slots && !(state.lead && state.lead.appointment) && left() > 1200) { try { const a = await availableSlots(); state.slots = a.slots; state.calendar = a.calendar; codeSlots = !!(a.slots && a.slots.length); } catch (e) {} }
+  if (state.quotedNow && !state.slots && !(state.lead && state.lead.appointment) && left() > 1200) { try { const a = await availableSlots(); state.slots = a.slots; state.calendar = a.calendar; codeSlots = !!(a.slots && a.slots.length); } catch (e) {} }
   reply = guardPrices(txt(reply, 1200), state, es) || codeReply(state, es);
   reply = reply.replace(/\*\*|__/g, '');
   if (codeSlots && reply) {
@@ -707,7 +736,7 @@ exports.handler = async (event) => {
   const alreadyEmailed = !!body.leadSent && state.lead && !state.lead.appointment;                     // one quote email per conversation
   const forwarded = state.lead && !alreadyEmailed && Date.now() - t0 < 6500 ? await forwardLead(state.lead, state.quote, body) : alreadyEmailed;
   const slotsOut = state.slots && state.slots.length && !(state.lead && state.lead.appointment) ? state.slots.slice(0, 3).map(s => ({ date: s.date, day: s.day, windows: s.windows.slice(0, 3) })) : null;
-  return resp(200, { ok: true, reply, slots: slotsOut, project: state.project && state.project.areas.length ? state.project : null, quote: quoteFor(state.quote, lang) || null, lead: state.lead ? { name: state.lead.name, phone: state.lead.phone, summary: state.lead.summary } : null, appointment: (state.lead && state.lead.appointment) || null, forwarded });
+  return resp(200, { ok: true, reply, slots: slotsOut, project: state.project && state.project.areas.length ? state.project : null, quote: state.quotedNow ? (quoteFor(state.quote, lang) || null) : null, qraw: state.quotedNow && state.quote ? signQuote(state.quote) : null, lead: state.lead ? { name: state.lead.name, phone: state.lead.phone, summary: state.lead.summary } : null, appointment: (state.lead && state.lead.appointment) || null, forwarded });
 };
 exports._computeQuote = computeQuote; exports._openSlots = openSlots; exports._runTool = runTool; exports._localIso = localIso; exports._pdfData = pdfData;
 exports._buildQuotePdf = buildQuotePdf;
