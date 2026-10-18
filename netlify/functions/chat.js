@@ -312,6 +312,7 @@ async function forwardLead(lead, quote, body) {
 async function runTool(name, args, state) {
   args = args && typeof args === 'object' ? args : {};
   if (name === 'calculate_quote') {
+    if (state.lockedQuote) { const q = state.lockedQuote; return { quote_id: q.id, price_including_estimated_dump_fee: money(q.price), locked: true, note: 'Price locked from the photo estimate. Use exactly this price.', lines: q.lines.map(l => `${l.label} (${l.detail}): ${l.amount}`) }; }
     if (args.address && !args.miles) { const mi = await milesFromAddress(args.address); if (mi) args.miles = mi; }
     if (args.address) state.address = txt(args.address, 160);
     const q = computeQuote(args); state.quote = q;
@@ -375,6 +376,42 @@ function codeReply(state, es) {
   return es ? 'Perdón, ¿puedes repetirlo con otras palabras? También puedes llamar o escribir al (512) 369-2644.' : 'Sorry, could you rephrase that? You can also call or text (512) 369-2644.';
 }
 
+/* Photo-estimate price lock: the price the customer saw on the estimator is kept exactly (verified against our own math) */
+async function lockedQuote(L, lang) {
+  if (!L || typeof L !== 'object' || !SIZES.includes(L.size)) return null;
+  const pageLines = Array.isArray(lang === 'es' ? L.lines_es : L.lines_en) ? (lang === 'es' ? L.lines_es : L.lines_en) : (Array.isArray(L.lines_en) ? L.lines_en : null);
+  if (!pageLines || !pageLines.length || pageLines.length > 20) return null;
+  const num = a => { const m = String(a || '').replace(/,/g, '').match(/\$\s?(\d+(?:\.\d+)?)/); return m ? Math.round(+m[1]) : null; };
+  const lines = pageLines.map(l => ({ group: ['load', 'disposal', 'travel'].includes(l.group) ? l.group : 'disposal', label: txt(l.label, 80), detail: txt(l.detail, 100), amount: txt(l.amount, 20), value: num(l.amount) }));
+  const pagePrice = Math.round(+L.price || 0);
+  const sum = lines.reduce((t, l) => t + (l.value || 0), 0);
+  if (!pagePrice || Math.abs(Math.ceil(sum / 5) * 5 - pagePrice) > 5) return null;
+  // verify against server math (same inputs, travel excluded) so the browser cannot invent a price
+  const sp = L.special || {}, args = { size: L.size, city: 'austin', stairs: clampInt(L.stairs, 0, 10), est_weight_lbs: clampNum(L.est_weight_lbs, 0, 40000), heavy_material: !!L.heavy_material, loads: clampInt(L.loads || 1, 1, 4) };
+  SUR_KEYS.forEach(k => { if (sp[k]) args[k] = clampInt(sp[k], 0, 40); });
+  const srv = computeQuote(args);
+  const srvNoTravel = srv.lines.filter(l => l.group !== 'travel').reduce((t, l) => t + (l.value || 0), 0);
+  const pageNoTravel = lines.filter(l => l.group !== 'travel').reduce((t, l) => t + (l.value || 0), 0);
+  if (Math.abs(pageNoTravel - srvNoTravel) > Math.max(30, srvNoTravel * 0.12)) { console.error('locked quote mismatch', pageNoTravel, srvNoTravel); return null; }
+  let out = lines.filter(l => l.value != null || l.group !== 'travel');
+  let price = pagePrice, mileNote = '';
+  const city = ['austin', 'near', 'other'].includes(L.city) ? L.city : 'other';
+  if (city !== 'austin') {
+    out = out.filter(l => !(l.group === 'travel' && l.value == null));
+    const miles = L.address ? await milesFromAddress(L.address) : null;
+    const extra = miles ? Math.max(0, miles - MILE.free_miles) : 0;
+    if (extra) {
+      const v = extra * MILE.per_mile;
+      out.push({ group: 'travel', label: lang === 'es' ? `Millaje (${miles} mi hasta la recogida)` : `Mileage (${miles} mi to pickup)`, detail: lang === 'es' ? `${MILE.free_miles} mi gratis + ${extra} mi x $${MILE.per_mile}` : `${MILE.free_miles} mi free + ${extra} mi x $${MILE.per_mile}`, value: v, amount: money(v) });
+      price = Math.ceil((sum + v) / 5) * 5; mileNote = money(v);
+    }
+  }
+  const tp = partsInTz(new Date(), SCHED.timezone);
+  let h = 0; for (const ch of String(L.address || '') + pagePrice) h = (h * 31 + ch.charCodeAt(0)) % 9000;
+  const id = 'EW-' + String(tp.y).slice(2) + String(tp.m).padStart(2, '0') + String(tp.d).padStart(2, '0') + '-' + (1000 + h);
+  return { id, locked: true, mileage_added: mileNote, custom: false, confirm_on_site: srv.confirm_on_site, dump_included: true, size: L.size, price, low: price, high: price, lines: out, address: txt(L.address, 160) };
+}
+
 /* Language: the visitor's own words win; otherwise the browser/system language */
 function detectLang(text) {
   const t = ' ' + String(text || '').toLowerCase() + ' ';
@@ -429,6 +466,8 @@ exports.handler = async (event) => {
   const uiLang = body.lang === 'es' ? 'es' : 'en', lang = detectLang(lastUser) || detectLang(raw.filter(m => m && m.role !== 'assistant').slice(-4).map(m => m.text).join(' ')) || uiLang, es = lang === 'es';
   const LN = es ? 'Spanish' : 'English';
   const state = { photos, lang }, t0 = Date.now(), DEADLINE = 8300, sys = systemPrompt() + `\nLANGUAGE RULE: The visitor's device/system language is ${uiLang === 'es' ? 'Spanish' : 'English'}. Their latest message is in ${LN}. Write your ENTIRE reply in ${LN} only. Do not use the other language, not even a greeting.`;
+  if (body.locked) { try { const lq = await lockedQuote(body.locked, lang); if (lq) { state.quote = lq; state.lockedQuote = lq; if (lq.address) state.address = lq.address; } } catch (e) { console.error('lock failed', e.message); } }
+  const lockNote = state.lockedQuote ? `\nPRICE LOCKED: this visitor already received a photo estimate. The final price is ${money(state.lockedQuote.price)} (quote ${state.lockedQuote.id})${state.lockedQuote.mileage_added ? `, which now includes ${state.lockedQuote.mileage_added} mileage because the pickup is outside Austin - mention that briefly` : ''}. Do NOT call calculate_quote and never state any other price. Go straight to check_availability / booking.` : '';
   const left = () => DEADLINE - (Date.now() - t0);
   let usedModel = first, reply = '', noThink = true;
   const call = async (m) => {
@@ -437,7 +476,7 @@ exports.handler = async (event) => {
     if (noThink) { const t = thinkingFor(m); if (t) gen.thinkingConfig = t; }
     try {
       return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', signal: ctl.signal, headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
-        body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents, tools: TOOLS, toolConfig: { functionCallingConfig: { mode: 'AUTO' } }, generationConfig: gen }) });
+        body: JSON.stringify({ systemInstruction: { parts: [{ text: sys + lockNote }] }, contents, tools: TOOLS, toolConfig: { functionCallingConfig: { mode: 'AUTO' } }, generationConfig: gen }) });
     } finally { clearTimeout(timer); }
   };
   try {
