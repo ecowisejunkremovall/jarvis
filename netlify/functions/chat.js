@@ -288,7 +288,8 @@ HOW TO QUOTE:
 - When you have enough information call calculate_quote. NEVER state a price, fee or total that did not come from calculate_quote. Give the ONE price from calculate_quote (never a range). Explain simply: it already includes an estimated dump/disposal fee (the final dump fee is adjusted to the actual landfill ticket), and the exact price is confirmed in writing before loading. If confirm_on_site is true, say the crew confirms dense material/demolition on site.
 HOW TO BOOK:
 - If the visitor arrives with a PHOTO ESTIMATE summary (size, items, total, name, mobile and consent), do not re-ask those. Only ask for the pickup address if it is not included (and stairs if unknown), call calculate_quote with that size/items and the address, then go straight to check_availability.
-- After a quote, offer to book. Call check_availability and offer 2-3 windows. Then collect name, mobile number, service address and clear permission to call/text. Then call book_appointment.
+- ORDER OF A QUOTE ANSWER: right after calculate_quote, in the SAME turn ALSO call check_availability (do not wait for the visitor to say yes). The itemized quote card is shown to the visitor ABOVE your message, so do not list the line items again. Then write ONE short message: (1) the single price and, in one sentence, that it covers labor, loading, travel and the estimated dump fee (adjusted to the landfill ticket) and is confirmed in writing before loading; (2) the next 2-3 open windows (day + window) from check_availability; (3) ask which one they prefer. Plain text only, no markdown, no asterisks.
+- When they pick a window, collect name, mobile number, service address (if not given) and clear permission to call/text. Then call book_appointment.
 - After book_appointment: if confirmed is true, tell them they are booked for that day and window and the team will text a reminder. If confirmed is false, say it is a REQUEST and the team will text to confirm. If a window was just taken, apologize and offer other open windows.
 - Only offer windows returned by check_availability; never invent times.
 - If they don't want to book, offer save_lead for a follow-up call.
@@ -616,9 +617,18 @@ exports.handler = async (event) => {
     if (!state.quote && !state.lead && !state.slots) return resp(504, { error: 'timeout' });
   }
   console.log('chat ms', Date.now() - t0, usedModel);
+  let codeSlots = false;                                              // after a quote, always show open windows (even if the model forgot to check)
+  if (state.quote && !state.slots && !state.lead && left() > 1200) { try { const a = await availableSlots(); state.slots = a.slots; state.calendar = a.calendar; codeSlots = !!(a.slots && a.slots.length); } catch (e) {} }
   reply = guardPrices(txt(reply, 1200), state, es) || codeReply(state, es);
+  reply = reply.replace(/\*\*|__/g, '');
+  if (codeSlots && reply) {
+    reply = reply.split(/(?<=[.!?])\s+/).filter(x => !/would you like|want me to|shall i|can check|i can (also )?check|te gustar|quieres (que )?(agend|program|revis)|puedo revisar|deseas agendar/i.test(x)).join(' ');
+    const opts = state.slots.slice(0, 3).map(s => `${s.day} (${s.windows.slice(0, 2).join(' or ')})`).join(', ');
+    reply += es ? `\n\nTenemos disponible: ${opts}. ¿Cuál horario prefieres?` : `\n\nOur next openings: ${opts}. Which one works best for you?`;
+  }
   const forwarded = state.lead && Date.now() - t0 < 6000 ? await forwardLead(state.lead, state.quote, body) : false;
-  return resp(200, { ok: true, reply, quote: quoteFor(state.quote, lang) || null, lead: state.lead ? { name: state.lead.name, phone: state.lead.phone, summary: state.lead.summary } : null, appointment: (state.lead && state.lead.appointment) || null, forwarded });
+  const slotsOut = state.slots && state.slots.length && !(state.lead && state.lead.appointment) ? state.slots.slice(0, 3).map(s => ({ date: s.date, day: s.day, windows: s.windows.slice(0, 3) })) : null;
+  return resp(200, { ok: true, reply, slots: slotsOut, quote: quoteFor(state.quote, lang) || null, lead: state.lead ? { name: state.lead.name, phone: state.lead.phone, summary: state.lead.summary } : null, appointment: (state.lead && state.lead.appointment) || null, forwarded });
 };
 exports._computeQuote = computeQuote; exports._openSlots = openSlots; exports._runTool = runTool; exports._localIso = localIso; exports._pdfData = pdfData;
 exports._buildQuotePdf = buildQuotePdf;
