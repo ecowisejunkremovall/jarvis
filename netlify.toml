@@ -4,3 +4,15 @@
 [functions]
   directory = "netlify/functions"
   included_files = ["pricing.json"]
+
+# ---- Performance: browser caching ----
+[[headers]]
+  for = "/*.webp"
+  [headers.values]
+    Cache-Control = "public, max-age=2592000"
+
+
+[[headers]]
+  for = "/pricing.json"
+  [headers.values]
+    Cache-Control = "public, max-age=300"
