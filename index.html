@@ -2519,6 +2519,15 @@ html{scroll-behavior:smooth}
 @keyframes ecBounce{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-4px);opacity:1}}
 #ecChips{padding:2px 14px 10px;gap:8px}
 #ecChips[hidden]{display:none !important}
+.ec-slots{align-self:flex-start;max-width:92%;background:rgba(18,48,31,.55);border:1px solid rgba(140,196,162,.22);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:7px}
+.ec-sl-t{font-size:12px;font-weight:700;letter-spacing:.04em;color:#d9b078;text-transform:uppercase}
+.ec-sl-r{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.ec-sl-d{font-size:12.5px;font-weight:700;color:#e2ece5;min-width:100%}
+.ec-slots button{background:#12301f;border:1px solid #2b4a37;color:#e2ece5;border-radius:999px;padding:8px 13px;font-size:13px;cursor:pointer;min-height:36px;transition:background .2s,border-color .2s}
+.ec-slots button:hover:not(:disabled){background:#1a4430;border-color:#5fe39a}
+.ec-slots button.on{background:#b5723a;border-color:#d9b078;color:#fff}
+.ec-slots button:disabled:not(.on){opacity:.45;cursor:default}
+
 #ecChips button{background:rgba(18,48,31,.7);border:1px solid rgba(140,196,162,.25);color:#e2ece5;padding:7px 13px;font-size:12.8px;transition:background .2s,border-color .2s,transform .15s}
 #ecChips button:hover{background:#1a4430;border-color:#5fe39a;transform:translateY(-1px)}
 #ecForm{padding:10px 12px;gap:8px;background:rgba(8,20,15,.92);border-top:1px solid rgba(140,196,162,.12)}
@@ -2612,6 +2621,9 @@ html{scroll-behavior:smooth}
     c.appendChild(el('div','ec-qf',S.foot+(q.confirm_on_site?' '+S.os:'')));log.appendChild(c);down()}
   function shrink(file){return new Promise(function(res,rej){var u=URL.createObjectURL(file),im=new Image();im.onload=function(){var M=1024,k=Math.min(1,M/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);c.toBlob(function(bl){bl?res(bl):rej(new Error('img'))},'image/jpeg',.8)};im.onerror=function(){URL.revokeObjectURL(u);rej(new Error('img'))};im.src=u})}
   function b64(bl){return new Promise(function(res){var f=new FileReader();f.onload=function(){res(String(f.result).split(',')[1])};f.readAsDataURL(bl)})}
+  function slotPick(sl){var box=el('div','ec-slots');box.appendChild(el('div','ec-sl-t',es?'Elige un horario:':'Pick a time:'));
+    sl.slice(0,3).forEach(function(s){var row=el('div','ec-sl-r');row.appendChild(el('span','ec-sl-d',s.day));(s.windows||[]).slice(0,3).forEach(function(wn){var bt=el('button','',wn);bt.type='button';bt.onclick=function(){if(busy)return;[].forEach.call(box.querySelectorAll('button'),function(x){x.disabled=true});bt.classList.add('on');send((es?'Quiero el ':'I\'ll take ')+s.day+', '+wn)};row.appendChild(bt)});box.appendChild(row)});
+    log.appendChild(box);down()}
   function drawThumbs(){thumbs.innerHTML='';imgs.forEach(function(it,i){var d=el('div'),im=el('img'),bt=el('button','','\u00d7');im.src=it.url;im.alt='';bt.type='button';bt.setAttribute('aria-label','Remove photo '+(i+1));bt.onclick=function(){URL.revokeObjectURL(it.url);imgs.splice(i,1);drawThumbs()};d.appendChild(im);d.appendChild(bt);thumbs.appendChild(d)})}
   $('ecAttach').addEventListener('click',function(){fileIn.click()});
   fileIn.addEventListener('change',async function(){var fs=[].slice.call(fileIn.files).filter(function(f){return /^image\//.test(f.type)&&f.size<25*1048576});fileIn.value='';
@@ -2629,7 +2641,7 @@ html{scroll-behavior:smooth}
       if(r.status===429)add('assistant',T.busy);
       else if(d.error==='timeout')add('assistant',T.slow);
       else if(!r.ok||!d.ok){add('assistant',T.err+' [HTTP '+r.status+(d.error?' '+d.error:'')+']');addCall()}
-      else{add('assistant',d.reply);msgs.push({role:'assistant',text:d.reply});if(d.quote)card(d.quote);if(d.lead&&!leadSent){leadSent=true;sendLead(d.lead,!d.forwarded);add('note',T.saved)}}
+      else{var rp=String(d.reply||'').replace(/\*\*|__/g,'');if(d.quote)card(d.quote);add('assistant',rp);msgs.push({role:'assistant',text:rp});if(d.slots&&d.slots.length&&!d.appointment)slotPick(d.slots);if(d.lead&&!leadSent){leadSent=true;sendLead(d.lead,!d.forwarded);add('note',T.saved)}}
     }catch(e){console.error('chat error',e);typing(false);add('assistant',T.err+' ['+(e.message||'network')+']');addCall()}
     busy=false;
   }
