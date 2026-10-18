@@ -700,7 +700,7 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'GET' && event.queryStringParameters && event.queryStringParameters.check) {
     const av = await availableSlots();
     const info = { function: 'chat ok', agent: 'JARVIS', hasKey: !!key, tools: TOOLS[0].functionDeclarations.map(t => t.name), sizes: SIZES,
-      calendarUrlSet: !!CAL_URL(), liveCalendar: av.calendar, calendarError: av.calendar ? null : lastCalErr, nextOpen: av.slots.slice(0, 2) };
+      calendarUrlSet: !!CAL_URL(), googleMapsKey: !!process.env.GOOGLE_MAPS_KEY, googleTestMiles: process.env.GOOGLE_MAPS_KEY ? await googleMiles('Round Rock Premium Outlets, Round Rock TX', undefined) : null, liveCalendar: av.calendar, calendarError: av.calendar ? null : lastCalErr, nextOpen: av.slots.slice(0, 2) };
     if (key) { try { const n = await listModels(key); info.keyWorks = true; info.chosenModel = process.env.GEMINI_CHAT_MODEL || pickModel(n); } catch (e) { info.keyWorks = false; info.googleStatus = e.status || e.message; } }
     return resp(200, info);
   }
