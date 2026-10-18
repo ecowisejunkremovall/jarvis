@@ -2642,7 +2642,7 @@ html{scroll-behavior:smooth}
       if(r.status===429)add('assistant',T.busy);
       else if(d.error==='timeout')add('assistant',T.slow);
       else if(!r.ok||!d.ok){add('assistant',T.err+' [HTTP '+r.status+(d.error?' '+d.error:'')+']');addCall()}
-      else{var rp=String(d.reply||'').replace(/\*\*|__/g,'');if(d.project)project=d.project;if(d.qraw)lastQ=d.qraw;if(d.quote){card(d.quote)}add('assistant',rp);msgs.push({role:'assistant',text:rp});if(d.slots&&d.slots.length&&!d.appointment)slotPick(d.slots);if(d.lead&&!leadSent){leadSent=true;sendLead(d.lead,!d.forwarded);if(!(d.slots&&d.slots.length))add('note',T.saved)}}
+      else{var rp=String(d.reply||'').replace(/\*\*|__/g,'');if(d.project)project=d.project;if(d.qraw)lastQ=d.qraw;if(d.quote){card(d.quote)}add('assistant',rp);msgs.push({role:'assistant',text:rp});if(d.slots&&d.slots.length&&!d.appointment)slotPick(d.slots);if(d.lead&&!leadSent){leadSent=true;sendLead(d.lead,!d.forwarded);if(!(d.slots&&d.slots.length)&&!d.appointment)add('note',T.saved)}}
     }catch(e){console.error('chat error',e);typing(false);add('assistant',T.err+' ['+(e.message||'network')+']');addCall()}
     busy=false;
   }
