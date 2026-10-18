@@ -1,8 +1,8 @@
 /* EcoWise JARVIS — public quote & booking agent — Netlify Function (Google Gemini)
-   SECURITY BY DESIGN: this function can only (1) call Gemini, (2) read pricing.json and (3) push a new lead/appointment to Base44.
+   SECURITY BY DESIGN: this function can only (1) call Gemini, (2) read pricing.json and (3) send a booking/lead to your Google Apps Script (calendar + email).
    It has NO database reads, NO bank/payroll/accounting access, NO links to internal apps.
    The AI has four tools: calculate_quote (math done in code), check_availability, book_appointment, save_lead.
-   Env vars: GEMINI_API_KEY (required) · GEMINI_CHAT_MODEL (optional) · ALLOWED_ORIGINS (optional) · BASE44_LEAD_URL/BASE44_LEAD_SECRET (optional) */
+   Env vars: GEMINI_API_KEY (required) · GEMINI_CHAT_MODEL (optional) · ALLOWED_ORIGINS (optional) · GOOGLE_SCRIPT_URL / GOOGLE_SCRIPT_SECRET (calendar + email) */
 const PRICING = require('../../pricing.json');
 const SIZES = Object.keys(PRICING.sizes);
 const SUR = PRICING.surcharges || {};
@@ -76,8 +76,9 @@ function openSlots(now = new Date()) {
   return out;
 }
 
-/* ---------- Google Calendar via Base44 (function "jarvisCalendar") ---------- */
-const CAL_URL = () => process.env.BASE44_CALENDAR_URL;
+/* ---------- Google Calendar + email via Google Apps Script (jarvis-google-script.gs) ---------- */
+const CAL_URL = () => process.env.GOOGLE_SCRIPT_URL;
+const CAL_SECRET = () => process.env.GOOGLE_SCRIPT_SECRET;
 function tzOffsetMin(utcMs, tz) { const p = partsInTz(new Date(utcMs), tz); return (Date.UTC(p.y, p.m - 1, p.d, p.h, p.min) - utcMs) / 60000; }
 function localIso(date, hhmm, tz = SCHED.timezone) {           // "2026-10-19","10:00" in Austin -> UTC ISO
   const [y, m, d] = date.split('-').map(Number), [h, mi] = hhmm.split(':').map(Number);
@@ -86,22 +87,24 @@ function localIso(date, hhmm, tz = SCHED.timezone) {           // "2026-10-19","
 }
 const rawWindow = (label) => SCHED.windows.find(w => fmtWindow(w).replace(/\s/g, '').toLowerCase() === String(label || '').replace(/\s/g, '').toLowerCase());
 const windowRange = (date, raw) => { const [a, b] = raw.split('-'); return { start: localIso(date, a), end: localIso(date, b) }; };
+let lastCalErr = null;
 async function calendar(payload, ms = 3000) {
-  const url = CAL_URL(), secret = process.env.BASE44_LEAD_SECRET;
-  if (!url || !secret) return null;
+  const url = CAL_URL(), secret = CAL_SECRET();
+  if (!url || !secret) { lastCalErr = 'missing GOOGLE_SCRIPT_URL or GOOGLE_SCRIPT_SECRET'; return null; }
+  lastCalErr = null;
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
   try {
-    const r = await fetch(url, { method: 'POST', signal: ctl.signal, headers: { 'content-type': 'application/json', 'x-ecowise-secret': secret }, body: JSON.stringify(payload) });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok && !j.conflict) { console.error('calendar', r.status, JSON.stringify(j).slice(0, 200)); return null; }
+    const r = await fetch(url, { method: 'POST', signal: ctl.signal, headers: { 'content-type': 'application/json', 'x-ecowise-secret': secret }, body: JSON.stringify(Object.assign({ secret }, payload)), redirect: 'follow' });
+    const j = await r.json().catch(() => ({ error: 'non-JSON answer (check the web app access is "Anyone")' }));
+    if (!r.ok && !j.conflict) { lastCalErr = 'google script ' + r.status + ' ' + JSON.stringify(j).slice(0, 160); console.error('calendar', lastCalErr); return null; }
     return j;
-  } catch (e) { console.error('calendar failed', e.name); return null; } finally { clearTimeout(t); }
+  } catch (e) { lastCalErr = e.name === 'AbortError' ? 'google script timeout' : 'google script unreachable: ' + e.message; console.error('calendar failed', lastCalErr); return null; } finally { clearTimeout(t); }
 }
 async function availableSlots() {
   const slots = openSlots(); if (!slots.length) return { slots, calendar: false };
   const timeMin = localIso(slots[0].date, '00:00'), timeMax = localIso(slots[slots.length - 1].date, '23:59');
-  const res = await calendar({ action: 'availability', timeMin, timeMax });
-  if (!res || !Array.isArray(res.busy)) return { slots, calendar: false };
+  const res = await calendar({ action: 'availability', timeMin, timeMax }, 4000);
+  if (!res || !Array.isArray(res.busy)) { if (res && !lastCalErr) lastCalErr = 'google script answered: ' + JSON.stringify(res).slice(0, 160); return { slots, calendar: false }; }
   const busy = res.busy.map(b => [Date.parse(b.start), Date.parse(b.end)]);
   const out = [];
   for (const s of slots) {
@@ -215,18 +218,13 @@ STRICT RULES:
 - Do not describe or identify people in photos.`;
 }
 
-/* ---------- Base44 push (create-only) ---------- */
+/* ---------- Email notification (leads and unconfirmed requests) via the same Google Script ---------- */
 async function forwardLead(lead, quote, body) {
-  const url = process.env.BASE44_LEAD_URL, secret = process.env.BASE44_LEAD_SECRET;
-  if (!url || !secret) return false;
-  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 2000);
-  try {
-    const transcript = (Array.isArray(body.messages) ? body.messages : []).slice(-12).map(m => (m && m.role === 'assistant' ? 'JARVIS: ' : 'Visitor: ') + txt(m && m.text, 300)).join('\n');
-    const r = await fetch(url, { method: 'POST', signal: ctl.signal, headers: { 'content-type': 'application/json', 'x-ecowise-secret': secret },
-      body: JSON.stringify({ name: lead.name, phone: lead.phone, source: lead.appointment ? 'chat-booking' : 'chat', summary: lead.summary,
-        appointment: lead.appointment || null, low: quote ? quote.low : 0, high: quote ? quote.high : 0, lang: body.lang === 'es' ? 'es' : 'en', transcript }) });
-    return r.ok;
-  } catch (e) { console.error('base44 forward failed', e.name); return false; } finally { clearTimeout(t); }
+  if (lead.appointment && lead.appointment.confirmed) return true;   // the script already emailed the booking
+  const transcript = (Array.isArray(body.messages) ? body.messages : []).slice(-12).map(m => (m && m.role === 'assistant' ? 'JARVIS: ' : 'Visitor: ') + txt(m && m.text, 300)).join('\n');
+  const res = await calendar({ action: 'notify', kind: lead.appointment ? 'request' : 'lead', name: lead.name, phone: lead.phone, summary: lead.summary,
+    estimate: quote ? `${money(quote.low)}-${money(quote.high)}` : '', transcript }, 2500);
+  return !!(res && res.ok);
 }
 
 async function runTool(name, args, state) {
@@ -255,7 +253,7 @@ async function runTool(name, args, state) {
     let status = 'requested - team will text to confirm';
     if (CAL_URL()) {
       const r = windowRange(day.date, rawWindow(win));
-      const res = await calendar({ action: 'book', start: r.start, end: r.end, name: name2, phone, address: appt.address, estimate: est, summary: txt(args.summary, 400) }, 3500);
+      const res = await calendar({ action: 'book', start: r.start, end: r.end, name: name2, phone, address: appt.address, estimate: est, summary: txt(args.summary, 400) }, 4500);
       if (res && res.conflict) { state.slots = null; return { saved: false, error: 'That window was just taken. Call check_availability again and offer other windows.' }; }
       if (res && res.ok) { appt.confirmed = true; appt.eventId = res.eventId; status = 'booked on the EcoWise calendar - the team will text a reminder'; }
     }
@@ -298,7 +296,7 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'GET' && event.queryStringParameters && event.queryStringParameters.check) {
     const av = await availableSlots();
     const info = { function: 'chat ok', agent: 'JARVIS', hasKey: !!key, tools: TOOLS[0].functionDeclarations.map(t => t.name), sizes: SIZES,
-      calendarUrlSet: !!CAL_URL(), liveCalendar: av.calendar, nextOpen: av.slots.slice(0, 2) };
+      calendarUrlSet: !!CAL_URL(), liveCalendar: av.calendar, calendarError: av.calendar ? null : lastCalErr, nextOpen: av.slots.slice(0, 2) };
     if (key) { try { const n = await listModels(key); info.keyWorks = true; info.chosenModel = process.env.GEMINI_CHAT_MODEL || pickModel(n); } catch (e) { info.keyWorks = false; info.googleStatus = e.status || e.message; } }
     return resp(200, info);
   }
