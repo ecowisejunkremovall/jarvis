@@ -21,7 +21,7 @@ function dumpFee(size, loads, lbs, heavy) {
   return { low: Math.max(floor[0], r5(lo)), high: Math.max(floor[1], r5(hi)), tons: [w * (1 - k) / 2000, w * (1 + k) / 2000] };
 }
 const DENSE = PRICING.dense_per_cubic_yard || [60, 90], DEMO = PRICING.demolition_per_hour || [90, 90];
-const FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
+const FALLBACKS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-flash-lite-latest'];
 const hits = new Map(), LIMIT = 40, WINDOW_MS = 10 * 60 * 1000;
 let cachedModel = null;
 
@@ -346,7 +346,7 @@ exports.handler = async (event) => {
     for (let step = 0; step < 4; step++) {
       if (step > 0 && left() < 2500) { console.error('deadline: answering from code', Date.now() - t0); break; }
       let r;
-      if (step === 0) { for (const m of models.slice(0, 3)) { usedModel = m; r = await call(m); if (r.status !== 404) break; console.error('model not found:', m); } } else r = await call(usedModel);
+      if (step === 0) { for (const m of models.slice(0, 3)) { usedModel = m; r = await call(m); if (r.status !== 404 && r.status !== 429) break; console.error('model unavailable:', m, r.status); if (left() < 2500) break; } } else r = await call(usedModel);
       if (r.status === 400 && noThink) { const t = await r.text(); if (/think/i.test(t)) { noThink = false; r = await call(usedModel); } else { console.error('gemini 400', t.slice(0, 300)); return resp(502, { error: 'AI service error', detail: 'google 400' }); } }
       if (r.status === 429) return resp(429, { error: 'busy' });
       if (!r.ok) { console.error('gemini', r.status, usedModel, (await r.text()).slice(0, 300)); return resp(502, { error: 'AI service error', detail: 'google ' + r.status }); }
