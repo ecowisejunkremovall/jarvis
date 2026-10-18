@@ -49,17 +49,18 @@
     "paint": 15,
     "tv": 20,
     "tire": 15,
-    "tire_rim": 25
+    "tire_rim": 25,
+    "sofa": 30
   },
   "surcharges": {
-    "_comment": "Only added when the item is seen in a photo or mentioned. Based on Austin TDS gate rates + handling. Ranges are [low, high] per unit.",
+    "_comment": "Only added when the item is seen in a photo or mentioned. TDS landfill (Oct 2026): mattress/box spring/sofa/recliner $25 each, Freon removal $50, tires $8-80 off rim. Our prices = gate fee + handling.",
     "fridge": {
       "label": "Refrigerator / freezer (Freon removal + gate fee)",
       "range": [
         90,
         100
       ],
-      "label_es": "Refrigerador / congelador (retiro de fre\u00f3n + entrada)"
+      "label_es": "Refrigerador / congelador (retiro de freón + entrada)"
     },
     "mattress": {
       "label": "Mattress (landfill gate fee)",
@@ -67,7 +68,7 @@
         40,
         60
       ],
-      "label_es": "Colch\u00f3n (cuota del botadero)"
+      "label_es": "Colchón (cuota del botadero)"
     },
     "box_spring": {
       "label": "Box spring (landfill gate fee)",
@@ -91,7 +92,7 @@
         15,
         15
       ],
-      "label_es": "Lata de pintura (solidificaci\u00f3n)"
+      "label_es": "Lata de pintura (solidificación)"
     },
     "tv": {
       "label": "TV / monitor (e-waste)",
@@ -99,7 +100,7 @@
         20,
         20
       ],
-      "label_es": "TV / monitor (residuo electr\u00f3nico)"
+      "label_es": "TV / monitor (residuo electrónico)"
     },
     "tire": {
       "label": "Tire",
@@ -116,6 +117,14 @@
         25
       ],
       "label_es": "Llanta con rin"
+    },
+    "sofa": {
+      "label": "Sofa / recliner (landfill fee)",
+      "range": [
+        30,
+        30
+      ],
+      "label_es": "Sofá / reclinable (cuota del botadero)"
     }
   },
   "dense_per_cubic_yard": [
@@ -127,38 +136,38 @@
     90
   ],
   "dump_fee": {
-    "_comment": "MINIMUM dump fee per load size (floor). JARVIS never quotes less than this, even if the photo looks light.",
+    "_comment": "MINIMUM dump fee per load size (floor). A full trip to TDS costs at least (2 tons x $61 + $30) x 1.25 = ~$190.",
     "single": [
-      45,
-      45
+      50,
+      50
     ],
     "quarter": [
-      45,
-      65
+      70,
+      80
     ],
     "half": [
-      65,
-      95
-    ],
-    "three_quarter": [
-      85,
+      100,
       120
     ],
+    "three_quarter": [
+      140,
+      160
+    ],
     "full": [
-      105,
-      150
+      175,
+      195
     ]
   },
   "dump_rates": {
-    "_comment": "Weight-based dump fee: estimated tons x rate + environmental fee, + safety margin. Uses the higher of this or the dump_fee minimum.",
-    "per_ton": 60,
-    "heavy_per_ton": 95,
-    "minimum": 45,
+    "_comment": "TDS Creedmoor landfill gate rates (checked Oct 2026): $60/ton MSW (2-ton minimum per load) + TCEQ $0.94/ton => 61/ton. Environmental charge $16 small / $30 large load. RCR 3.6% + WWM 14.5% + monthly fuel surcharge => safety_pct 25. C&D large loads $90/ton. 'minimum' is the per-job share for small loads that ride along with other jobs; full-trip minimums are in dump_fee.",
+    "per_ton": 61,
+    "heavy_per_ton": 90,
+    "minimum": 20,
     "env_fee": [
       16,
       30
     ],
-    "safety_pct": 15,
+    "safety_pct": 25,
     "weight_range_pct": 20
   },
   "mileage": {
