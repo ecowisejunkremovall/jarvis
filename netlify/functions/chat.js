@@ -123,6 +123,34 @@ function milesFor(a) {
   return a.city === 'austin' ? (MILE.city_miles.austin || 8) : null;
 }
 
+/* Address -> driving miles from the EcoWise base (OpenStreetMap Nominatim, free; straight line x road factor) */
+const BASE = Object.assign({ lat: 30.2672, lng: -97.7431, road_factor: 1.25 }, MILE.base || {});
+const geoCache = new Map();
+async function geocodeOne(q, signal) {
+  const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' + encodeURIComponent(/\btx\b|texas/i.test(q) ? q : q + ', Texas');
+  const r = await fetch(url, { signal, headers: { 'User-Agent': 'EcoWise-JARVIS/1.0 (ecowisejunkremovall.com)', 'Accept-Language': 'en' } });
+  const j = r.ok ? await r.json() : [];
+  return j.length ? { lat: +j[0].lat, lng: +j[0].lon } : null;
+}
+async function milesFromAddress(addr, ms = 2500) {
+  const q = txt(addr, 160); if (q.length < 4) return null;
+  if (geoCache.has(q)) return geoCache.get(q);
+  const zip = (q.match(/\b7\d{4}\b/) || [])[0];
+  const parts = q.split(',').map(x => x.trim()).filter(Boolean);
+  const town = parts.length > 1 ? parts[parts.length - (/\b(tx|texas)\b/i.test(parts[parts.length - 1]) && parts.length > 2 ? 2 : 1)].replace(/\b(tx|texas)\b|\d{5}/gi, '').trim() : '';
+  const tries = [q, zip, town && town.length > 2 ? town : null].filter((x, k, arr) => x && arr.indexOf(x) === k);
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+  try {
+    let p = null;
+    for (const c of tries) { p = await geocodeOne(c, ctl.signal); if (p) break; }
+    if (!p) { geoCache.set(q, null); return null; }
+    const R = 3958.8, rad = x => x * Math.PI / 180, dLat = rad(p.lat - BASE.lat), dLng = rad(p.lng - BASE.lng);
+    const d = 2 * R * Math.asin(Math.sqrt(Math.sin(dLat / 2) ** 2 + Math.cos(rad(BASE.lat)) * Math.cos(rad(p.lat)) * Math.sin(dLng / 2) ** 2));
+    const miles = Math.max(1, Math.round(d * BASE.road_factor));
+    geoCache.set(q, miles); return miles;
+  } catch (e) { console.error('geocode failed', e.name); return null; } finally { clearTimeout(t); }
+}
+
 function computeQuote(a) {
   const size = SIZES.includes(a.size) ? a.size : 'quarter', z = PRICING.sizes[size];
   const city = ['austin', 'near', 'other'].includes(a.city) ? a.city : 'other';
@@ -156,7 +184,7 @@ function computeQuote(a) {
   if (city === 'austin') add('travel', 'Fuel & trip', 'Austin service area', PRICING.fuelAustin, PRICING.fuelAustin);
   if (miles != null) {
     const extra = Math.max(0, miles - MILE.free_miles);
-    if (extra) add('travel', `Mileage (${miles} mi)`, `${MILE.free_miles} mi free + ${extra} mi x $${MILE.per_mile}`, extra * MILE.per_mile, extra * MILE.per_mile);
+    if (extra) add('travel', `Mileage (${miles} mi${a.address ? ' to pickup' : ''})`, `${MILE.free_miles} mi free + ${extra} mi x $${MILE.per_mile}`, extra * MILE.per_mile, extra * MILE.per_mile);
     else if (city !== 'austin') add('travel', `Mileage (${miles} mi)`, `First ${MILE.free_miles} mi free`, 0, 0);
   } else if (city !== 'austin') lines.push({ group: 'travel', label: 'Mileage', detail: `${MILE.free_miles} mi free, then $${MILE.per_mile}/mi - confirmed with address`, amount: 'TBD' });
 
@@ -190,6 +218,7 @@ const TOOLS = [{ functionDeclarations: [
     parameters: { type: 'OBJECT', properties: Object.assign({
       size: { type: 'STRING', enum: SIZES, description: 'load size by volume' },
       loads: { type: 'INTEGER', description: 'number of truck loads, normally 1' },
+      address: { type: 'STRING', description: 'pickup street address (or at least street + ZIP) exactly as the visitor gave it; used to calculate mileage' },
       city: { type: 'STRING', enum: ['austin', 'near', 'other'], description: 'austin = Austin; near = Round Rock, Cedar Park, Pflugerville, Georgetown, Leander, Buda, Kyle or San Marcos; other = anywhere else' },
       stairs: { type: 'INTEGER', description: 'flights of stairs without elevator' },
       dense_cubic_yards: { type: 'NUMBER', description: 'cubic yards of dirt, concrete, rock, tile or heavy debris SEEN or mentioned; 0 if none' },
@@ -223,7 +252,8 @@ YOUR JOB: give accurate junk removal quotes and book appointments. Work like an 
 HOW TO QUOTE:
 - Reply in the visitor's language (English or Spanish). Be warm, confident and brief (2-4 short sentences). Ask at most two questions at a time.
 - Look carefully at every photo: count every item, judge the total volume, and notice heavy/dense material or anything that must be dismantled.
-- You need: what the items are (or photos), the city, and stairs (flights, no elevator).
+- You need: what the items are (or photos), the PICKUP ADDRESS, and stairs (flights, no elevator).
+- Do NOT ask only for the city. Ask for the pickup address and explain why, e.g. (Spanish) "El precio puede variar según la zona. ¿Dónde sería la recogida? Con la dirección te doy una cotización más precisa." / (English) "Pricing can vary by area. Where would the pickup be? With the address I can give you a more accurate quote." If they prefer not to share it, a ZIP code or cross streets is enough. Infer city (austin / near / other) and town from the address, and pass the address to calculate_quote.
 - Load sizes: single (one bulky item or up to ~3 small pieces), quarter (~1/4 truck), half, three_quarter, full (whole truck). More than one truck: "full" and loads = number of trucks. If between sizes, choose the larger.
 - Surcharges are added ONLY when the item is actually visible in a photo or the visitor mentions it. Never assume hidden items. Current surcharges: ${extras}. Dirt/concrete/debris ${range(...DENSE)} per cubic yard. Demolition/dismantling (sheds, hot tubs, decks) ${range(...DEMO)} per hour on site.
 - Count paint cans, mattresses and box springs separately (paint, mattress, box_spring). Fridges/freezers/AC always go in fridge (Freon removal). Pass town (and miles if you can estimate them) so mileage is charged.
@@ -255,6 +285,8 @@ async function forwardLead(lead, quote, body) {
 async function runTool(name, args, state) {
   args = args && typeof args === 'object' ? args : {};
   if (name === 'calculate_quote') {
+    if (args.address && !args.miles) { const mi = await milesFromAddress(args.address); if (mi) args.miles = mi; }
+    if (args.address) state.address = txt(args.address, 160);
     const q = computeQuote(args); state.quote = q;
     return { quote_id: q.id, [q.dump_included ? 'estimated_total_including_dump_fee' : 'estimated_total_before_dump_fee']: `${money(q.low)} - ${money(q.high)}`, lines: q.lines.map(l => `${l.label} (${l.detail}): ${l.amount}`), confirm_on_site: q.confirm_on_site, travel_to_confirm: q.travel_to_confirm };
   }
