@@ -169,7 +169,8 @@ function computeQuote(a) {
   if (dh) add('load', 'Demolition / dismantling', `${a.demolition_item ? txt(a.demolition_item, 40) + ', ' : ''}~${dh} hr on site`, dh * DEMO[0], dh * DEMO[1]);
 
   // 2. Disposal (landfill)
-  const lbs = clampNum(a.est_weight_lbs, 0, 40000), heavy = !!(a.heavy_material || clampNum(a.dense_cubic_yards, 0, 40));
+  const volYd = a._yards ? clampNum(a._yards, 0, 400) : ({ single: 2, quarter: 4, half: 8, three_quarter: 12, full: 16 }[size] || 4) * loads * 0.75;   // realistic volume
+  const lbs = Math.max(clampNum(a.est_weight_lbs, 0, 40000), Math.round(volYd * 150)), heavy = !!(a.heavy_material || clampNum(a.dense_cubic_yards, 0, 40));
   const d = dumpFee(size, loads, lbs, heavy);
   const tonsTxt = d.tons ? `~${Math.round(lbs).toLocaleString('en-US')} lb${heavy ? ', heavy/C&D' : ''}` : 'By weight';
   add('disposal', 'Landfill tipping fee (TDS)', tonsTxt + ' - adjusted to scale ticket', d.low, d.high);
@@ -197,11 +198,11 @@ function computeQuote(a) {
 }
 
 /* ---------- Big projects: several areas (attic, basement, garage, bedrooms, yard...) added up into ONE quote ---------- */
-const AREA_ACCESS_FLIGHTS = { attic: 1, crawlspace: 1 };
+const AREA_ACCESS_FLIGHTS = { attic: 1, crawlspace: 1, basement: 1 };
 function cleanArea(a) {
   if (!a || typeof a !== 'object') return null;
   const o = { area: txt(a.area, 40), cubic_yards: Math.round(clampNum(a.cubic_yards, 0, 120) * 10) / 10, items: txt(a.items, 140), est_weight_lbs: clampNum(a.est_weight_lbs, 0, 20000),
-    stairs: clampInt(a.stairs, 0, 6), access: ['ground', 'stairs', 'attic', 'basement', 'crawlspace', 'yard', 'garage'].includes(a.access) ? a.access : 'ground',
+    stairs: clampInt(a.stairs, 0, 6), access: ['ground', 'stairs', 'attic', 'basement', 'crawlspace', 'yard', 'garage'].includes(a.access) && a.access !== 'ground' ? a.access : /basement|s[oó]tano/i.test(a.area || '') ? 'basement' : /attic|[aá]tico|desv[aá]n/i.test(a.area || '') ? 'attic' : /crawl/i.test(a.area || '') ? 'crawlspace' : (a.access || 'ground'),
     dense_cubic_yards: clampNum(a.dense_cubic_yards, 0, 40), demolition_hours: clampNum(a.demolition_hours, 0, 16) };
   SUR_KEYS.forEach(k => { const q = clampInt(a[k], 0, 40); if (q) o[k] = q; });
   return o.area && o.cubic_yards > 0 ? o : null;
@@ -220,14 +221,16 @@ function projectQuote(a, areas) {
   const total = areas.reduce((s, x) => s + x.cubic_yards, 0), nFull = Math.floor(total / 16 + 1e-9), rem = Math.round((total - nFull * 16) * 10) / 10;
   const agg = Object.assign({}, a, {
     size: nFull ? 'full' : sizeForYards(total), loads: Math.max(1, nFull),
-    stairs: areas.reduce((s, x) => s + x.stairs + (AREA_ACCESS_FLIGHTS[x.access] || 0), 0),
-    est_weight_lbs: Math.max(clampNum(a.est_weight_lbs, 0, 40000), areas.reduce((s, x) => s + x.est_weight_lbs, 0)),
+    stairs: areas.reduce((s, x) => s + Math.max(x.stairs, AREA_ACCESS_FLIGHTS[x.access] || 0), 0),
+    est_weight_lbs: Math.max(clampNum(a.est_weight_lbs, 0, 40000), areas.reduce((s, x) => s + x.est_weight_lbs, 0)), _yards: areas.reduce((s, x) => s + x.cubic_yards, 0),
     dense_cubic_yards: areas.reduce((s, x) => s + x.dense_cubic_yards, 0), demolition_hours: areas.reduce((s, x) => s + x.demolition_hours, 0) });
   SUR_KEYS.forEach(k => { agg[k] = areas.reduce((s, x) => s + (x[k] || 0), 0); });
   const q = computeQuote(agg);
   let vl = q.lines[0].value + q.lines[1].value;                      // truck space + crew labor
   if (nFull && rem > 0.5) { const r = computeQuote({ size: sizeForYards(rem), loads: 1, city: 'austin' }); vl += r.lines[0].value + r.lines[1].value; }
   const rest = q.lines.slice(2), areaLines = []; let used = 0;
+  const trips = nFull + (rem > 0.5 ? 1 : 0);
+  if (trips > 1) { const ef = (DR.env_fee || [16, 30]), v = Math.round((ef[0] + (ef[1] - ef[0]) * 0.5) * (trips - 1)); const at = rest.findIndex(l => l.group === 'disposal'); rest.splice(at < 0 ? 0 : at + 1, 0, { group: 'disposal', key: 'trips', label: 'Extra landfill trip(s)', detail: `${trips} trips total - gate/environmental fee`, value: v, amount: money(v) }); }
   areas.forEach((x, i) => { const v = i === areas.length - 1 ? vl - used : Math.round(vl * x.cubic_yards / total); used += v;
     areaLines.push({ group: 'load', key: 'area', label: x.area.charAt(0).toUpperCase() + x.area.slice(1), detail: `~${x.cubic_yards} cu yd${x.items ? ' · ' + x.items : ''}`, value: v, amount: money(v) }); });
   const loadsTxt = (nFull ? `${nFull} full truck load${nFull > 1 ? 's' : ''}` : '') + (nFull && rem > 0.5 ? ' + ' : '') + (!nFull || rem > 0.5 ? { single: 'small load', quarter: '1/4 load', half: '1/2 load', three_quarter: '3/4 load', full: 'full load' }[sizeForYards(nFull ? rem : total)] : '');
@@ -241,11 +244,11 @@ function projectQuote(a, areas) {
 function linesEs(lines) {
   const L = { 'Single item': 'Un artículo', '1/4 trailer (~4 cu yd)': '1/4 de tráiler (~4 yd³)', '1/2 trailer (~8 cu yd)': '1/2 tráiler (~8 yd³)', '3/4 trailer (~12 cu yd)': '3/4 de tráiler (~12 yd³)', 'Full trailer (~16 cu yd)': 'Tráiler completo (~16 yd³)',
     'Labor & loading': 'Mano de obra y carga', 'Stairs': 'Escaleras', 'Demolition / dismantling': 'Demolición / desmontaje', 'Landfill tipping fee (TDS)': 'Tarifa del botadero (TDS)',
-    'Dirt / concrete / debris': 'Tierra / concreto / escombro', 'Fuel & trip': 'Combustible y viaje', 'Mileage': 'Millaje' };
+    'Dirt / concrete / debris': 'Tierra / concreto / escombro', 'Extra landfill trip(s)': 'Viaje(s) extra al botadero', 'Fuel & trip': 'Combustible y viaje', 'Mileage': 'Millaje' };
   const D = s => String(s || '').replace('Truck space, by volume', 'Espacio en el camión, por volumen').replace(/(\d+)-person crew, /, 'Equipo de $1 personas, ')
     .replace(' hr on site', ' h en sitio').replace(/ hr$/, ' h').replace(' - adjusted to scale ticket', ' - se ajusta al ticket de báscula').replace('By weight', 'Por peso')
     .replace(', heavy/C&D', ', pesado/construcción').replace(' each', ' c/u').replace('Austin service area', 'Área de servicio de Austin').replace(/(\d+) mi free \+ /, '$1 mi gratis + ')
-    .replace(/First (\d+) mi free/, 'Primeras $1 mi gratis').replace(/^~([\d.]+) cu yd/, '~$1 yd³').replace(/(\d+) flights?/, '$1 tramo(s)').replace(' - confirmed with address', ' - se confirma con la dirección').replace('cu yd', 'yd³');
+    .replace(/First (\d+) mi free/, 'Primeras $1 mi gratis').replace(/^~([\d.]+) cu yd/, '~$1 yd³').replace(/(\d+) trips total - gate\/environmental fee/, '$1 viajes en total - cuota de entrada\/ambiental').replace(/(\d+) flights?/, '$1 tramo(s)').replace(' - confirmed with address', ' - se confirma con la dirección').replace('cu yd', 'yd³');
   return lines.map(l => {
     let label = l.label;
     if (l.key && l.key.startsWith('sur:')) { const [, k, q] = l.key.split(':'); label = `${q} x ${(SUR[k] && SUR[k].label_es) || label}`; }
@@ -339,11 +342,11 @@ HOW TO QUOTE:
 - LANGUAGE: follow the LANGUAGE RULE at the end of these instructions exactly. Never mix languages and never switch language on your own. Be warm, confident, human and brief (2-4 short sentences). For the intake you may ask several details at once as a short numbered list (one per line), otherwise ask at most two questions at a time.
 - Look carefully at every photo: count every item, judge the total volume, and notice heavy/dense material or anything that must be dismantled.
 - PROFESSIONAL INTAKE (like a real estimator, warm and human): BEFORE giving any price you must have: (1) what is being removed (photos or description), (2) the visitor's first name, (3) mobile number, (4) email (so we can send the itemized quote PDF; if they prefer not to give it, continue without it), (5) the pickup address, (6) stairs/access (flights without elevator, or ground level), (7) permission to call/text them about the quote.
-- When a photo arrives, first say in one short sentence what you see (e.g. "I can see a sofa, a mattress and about 6 bags"), then ask for the details you still need. Choose the most natural way: either one friendly message with a short numbered list of what you need (good when the visitor sent a photo and seems ready), or one or two questions at a time (good when the visitor is chatting casually). Never re-ask something already given. Never give a price before you have name, mobile and address.
+- When a photo arrives, first say in one short sentence what you see (e.g. "I can see a sofa, a mattress and about 6 bags"), then ask for the details you still need. Choose the most natural way: either one friendly message with a short numbered list of what you need (good when the visitor sent a photo and seems ready), or one or two questions at a time (good when the visitor is chatting casually). Never re-ask something already given, but always keep asking for anything still missing (stairs/access included). Never give a price before you have name, mobile, address and stairs/access. Permission to contact must be an explicit yes from the visitor; if they skipped it, ask once more in a friendly way before booking.
 - Do NOT ask only for the city. Ask for the full pickup address and explain why, e.g. in English: "Pricing can vary by area. Where would the pickup be? With the address I can give you a more accurate quote." (in Spanish, the same idea: "El precio puede variar según la zona. ¿Dónde sería la recogida? Con la dirección te doy una cotización más precisa.") If they prefer not to share it, a ZIP code or cross streets is enough. Infer city (austin / near / other) and town from the address, and pass the address to calculate_quote.
 - Load sizes: single (one bulky item or up to ~3 small pieces), quarter (~1/4 truck), half, three_quarter, full (whole truck). More than one truck: "full" and loads = number of trucks. If between sizes, choose the larger.
 - Surcharges are added ONLY when the item is actually visible in a photo or the visitor mentions it. Never assume hidden items. Current surcharges: ${extras}. Dirt/concrete/debris ${range(...DENSE)} per cubic yard. Demolition/dismantling (sheds, hot tubs, decks) ${range(...DEMO)} per hour on site.
-- Count paint cans, mattresses and box springs separately (paint, mattress, box_spring). Fridges/freezers/AC always go in fridge (Freon removal). Pass town (and miles if you can estimate them) so mileage is charged.
+- Count paint cans, mattresses, box springs and sofas/couches/recliners separately (paint, mattress, box_spring, sofa: the landfill charges per piece). Fridges/freezers/AC always go in fridge (Freon removal). Pass town (and miles if you can estimate them) so mileage is charged.
 - When calling book_appointment, fill crew_notes with an internal crew manifest (tools, PPE, access, donation candidates). Never show crew notes to the customer.
 - Always estimate the total weight (est_weight_lbs) from what you see; the dump fee is calculated from that weight. When unsure, estimate higher so EcoWise does not lose money.
 - When you have all the intake details, in the SAME turn call calculate_quote AND save_lead (name, mobile, a summary with the items and the quote id, consent true). Then continue with check_availability as described below.
@@ -427,7 +430,7 @@ async function runTool(name, args, state) {
   if (name === 'book_appointment') {
     const slots = state.slots || openSlots(), day = slots.find(s => s.date === String(args.date));
     const win = day && day.windows.find(w => w.replace(/\s/g, '').toLowerCase() === String(args.window || '').replace(/\s/g, '').toLowerCase());
-    if (!day || !win) return { saved: false, error: 'That date/window is not available. Call check_availability and offer open windows.' };
+    if (!day || !win) { state.slotRetry = true; return { saved: false, error: 'That date/window is not available. Call check_availability and offer open windows.' }; }
     if (txt(args.address, 160).length < 6) return { saved: false, error: 'Need the full service address.' };
     const walk = !!(state.quote && state.quote.walkthrough);
     const appt = { date: day.date, day: day.day, window: win, address: txt(args.address, 160), confirmed: false, visit: walk ? 'walkthrough' : 'pickup' };
@@ -438,7 +441,7 @@ async function runTool(name, args, state) {
       const r = windowRange(day.date, rawWindow(win));
       const pdfInfo = pdfData(state.quote, state.lang, { name: name2, phone, email, pay, address: appt.address, when: (state.lang === 'es' ? new Date(appt.date + 'T12:00:00Z').toLocaleDateString('es-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' }) : appt.day) + ', ' + appt.window });
       const res = await calendar({ action: 'book', visit: appt.visit, start: r.start, end: r.end, name: name2, phone, customer_email: email, payment_method: payLabel(pay, 'en'), lang: state.lang, address: appt.address, estimate: est, summary: txt(args.summary, 300), crew_notes: txt(args.crew_notes, 800), quote_lines: state.quote ? state.quote.lines.map(l => `${l.label} - ${l.detail}: ${l.amount}`).join('\n') : '', photos: state.photos || [], pdf: pdfInfo, pdf_b64: await pdfB64(pdfInfo, state.photos) }, 6500);
-      if (res && res.conflict) { state.slots = null; return { saved: false, error: 'That window was just taken. Call check_availability again and offer other windows.' }; }
+      if (res && res.conflict) { state.slots = null; state.slotRetry = true; return { saved: false, error: 'That window was just taken. Call check_availability again and offer other windows.' }; }
       if (res && res.ok) { appt.confirmed = true; appt.eventId = res.eventId; status = walk ? 'FREE on-site walkthrough booked on the EcoWise calendar - the crew confirms the final price at the visit, then schedules the pickup' : 'booked on the EcoWise calendar - the team will text a reminder'; }
     }
     state.lead = { name: name2, phone, email, pay, appointment: appt, address: appt.address, photos: state.photos || [], lang: state.lang,
@@ -735,7 +738,7 @@ exports.handler = async (event) => {
   }
   const alreadyEmailed = !!body.leadSent && state.lead && !state.lead.appointment;                     // one quote email per conversation
   const forwarded = state.lead && !alreadyEmailed && Date.now() - t0 < 6500 ? await forwardLead(state.lead, state.quote, body) : alreadyEmailed;
-  const slotsOut = state.slots && state.slots.length && !(state.lead && state.lead.appointment) ? state.slots.slice(0, 3).map(s => ({ date: s.date, day: s.day, windows: s.windows.slice(0, 3) })) : null;
+  const slotsOut = state.slots && state.slots.length && !(state.lead && state.lead.appointment) && (state.quotedNow || state.slotRetry) ? state.slots.slice(0, 3).map(s => ({ date: s.date, day: s.day, windows: s.windows.slice(0, 3) })) : null;
   return resp(200, { ok: true, reply, slots: slotsOut, project: state.project && state.project.areas.length ? state.project : null, quote: state.quotedNow ? (quoteFor(state.quote, lang) || null) : null, qraw: state.quotedNow && state.quote ? signQuote(state.quote) : null, lead: state.lead ? { name: state.lead.name, phone: state.lead.phone, summary: state.lead.summary } : null, appointment: (state.lead && state.lead.appointment) || null, forwarded });
 };
 exports._computeQuote = computeQuote; exports._openSlots = openSlots; exports._runTool = runTool; exports._localIso = localIso; exports._pdfData = pdfData;
