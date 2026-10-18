@@ -115,40 +115,60 @@ async function availableSlots() {
 }
 
 /* ---------- quote (all math in code, AI only supplies what it SEES) ---------- */
+const MILE = Object.assign({ free_miles: 10, per_mile: 3, city_miles: {} }, PRICING.mileage || {});
+function milesFor(a) {
+  const m = clampNum(a.miles, 0, 200); if (m) return Math.round(m);
+  const t = String(a.town || '').toLowerCase().trim();
+  if (t && MILE.city_miles[t] != null) return MILE.city_miles[t];
+  return a.city === 'austin' ? (MILE.city_miles.austin || 8) : null;
+}
+
 function computeQuote(a) {
   const size = SIZES.includes(a.size) ? a.size : 'quarter', z = PRICING.sizes[size];
   const city = ['austin', 'near', 'other'].includes(a.city) ? a.city : 'other';
   const loads = clampInt(a.loads || 1, 1, 4);
   let lo = 0, hi = 0; const lines = [];
-  const add = (label, detail, l, h) => { lo += l; hi += h; lines.push({ label, detail, amount: range(l, h) }); };
+  const add = (group, label, detail, l, h) => { lo += l; hi += h; lines.push({ group, label, detail, amount: range(l, h) }); };
+  const sizeName = { single: 'Single item', quarter: '1/4 trailer (~4 cu yd)', half: '1/2 trailer (~8 cu yd)', three_quarter: '3/4 trailer (~12 cu yd)', full: 'Full trailer (~16 cu yd)' }[size];
 
-  add('Base price', size.replace('_', ' ') + (loads > 1 ? ` x ${loads} loads` : ''), z.base * loads, z.base * loads);
-  add('Labor & loading', `Est. ${PRICING.crew} crew x ${z.hrs[0]}-${z.hrs[1]} hr x $${PRICING.rate}`, PRICING.crew * PRICING.rate * z.hrs[0] * loads, PRICING.crew * PRICING.rate * z.hrs[1] * loads);
-  if (city === 'austin') add('Fuel & travel', 'Within Austin', PRICING.fuelAustin, PRICING.fuelAustin);
-  else lines.push({ label: 'Fuel & travel', detail: 'Outside Austin - confirmed on the written quote', amount: 'TBD' });
-
-  for (const k of SUR_KEYS) {
-    const q = clampInt(a[k], 0, 20), rg = surRange(k); if (!q || !rg) continue;
-    add((SUR[k] && SUR[k].label) || k, `${q} x ${range(rg[0], rg[1])}`, q * rg[0], q * rg[1]);
-  }
-  const yd = clampNum(a.dense_cubic_yards, 0, 40);
-  if (yd) add('Dirt / concrete / debris', `~${yd} cu yd x ${range(DENSE[0], DENSE[1])}`, yd * DENSE[0], yd * DENSE[1]);
-  const dh = clampNum(a.demolition_hours, 0, 16);
-  if (dh) add('Demolition / dismantling', `${a.demolition_item ? txt(a.demolition_item, 40) + ', ' : ''}~${dh} hr on site x ${range(DEMO[0], DEMO[1])}`, dh * DEMO[0], dh * DEMO[1]);
+  // 1. Load & labor
+  add('load', sizeName + (loads > 1 ? ` x ${loads} loads` : ''), 'Truck space, by volume', z.base * loads, z.base * loads);
+  add('load', 'Labor & loading', `${PRICING.crew}-person crew, ${z.hrs[0]}-${z.hrs[1]} hr`, PRICING.crew * PRICING.rate * z.hrs[0] * loads, PRICING.crew * PRICING.rate * z.hrs[1] * loads);
   const st = clampInt(a.stairs, 0, 10);
-  if (st) add('Stairs', `${st} x $${PRICING.stairs}`, st * PRICING.stairs, st * PRICING.stairs);
+  if (st) add('load', 'Stairs', `${st} flight${st > 1 ? 's' : ''}`, st * PRICING.stairs, st * PRICING.stairs);
+  const dh = clampNum(a.demolition_hours, 0, 16);
+  if (dh) add('load', 'Demolition / dismantling', `${a.demolition_item ? txt(a.demolition_item, 40) + ', ' : ''}~${dh} hr on site`, dh * DEMO[0], dh * DEMO[1]);
+
+  // 2. Disposal (landfill)
   const lbs = clampNum(a.est_weight_lbs, 0, 40000), heavy = !!(a.heavy_material || clampNum(a.dense_cubic_yards, 0, 40));
-  const d = dumpFee(size, loads, lbs, heavy), df = true;
-  add('Dump / disposal fee', d.tons ? `Est. ${d.tons[0].toFixed(d.tons[1] < 1 ? 2 : 1)}-${d.tons[1].toFixed(d.tons[1] < 1 ? 2 : 1)} tons${heavy ? ' (heavy/C&D)' : ''} - adjusted to landfill ticket` : 'Estimated - adjusted to the actual landfill ticket', d.low, d.high);
+  const d = dumpFee(size, loads, lbs, heavy);
+  const tonsTxt = d.tons ? `~${Math.round(lbs).toLocaleString('en-US')} lb${heavy ? ', heavy/C&D' : ''}` : 'By weight';
+  add('disposal', 'Landfill tipping fee (TDS)', tonsTxt + ' - adjusted to scale ticket', d.low, d.high);
+  const yd = clampNum(a.dense_cubic_yards, 0, 40);
+  if (yd) add('disposal', 'Dirt / concrete / debris', `~${yd} cu yd`, yd * DENSE[0], yd * DENSE[1]);
+  for (const k of SUR_KEYS) {
+    const q = clampInt(a[k], 0, 40), rg = surRange(k); if (!q || !rg) continue;
+    add('disposal', `${q} x ${(SUR[k] && SUR[k].label) || k}`, `${range(rg[0], rg[1])} each`, q * rg[0], q * rg[1]);
+  }
+
+  // 3. Travel
+  const miles = milesFor(a);
+  if (city === 'austin') add('travel', 'Fuel & trip', 'Austin service area', PRICING.fuelAustin, PRICING.fuelAustin);
+  if (miles != null) {
+    const extra = Math.max(0, miles - MILE.free_miles);
+    if (extra) add('travel', `Mileage (${miles} mi)`, `${MILE.free_miles} mi free + ${extra} mi x $${MILE.per_mile}`, extra * MILE.per_mile, extra * MILE.per_mile);
+    else if (city !== 'austin') add('travel', `Mileage (${miles} mi)`, `First ${MILE.free_miles} mi free`, 0, 0);
+  } else if (city !== 'austin') lines.push({ group: 'travel', label: 'Mileage', detail: `${MILE.free_miles} mi free, then $${MILE.per_mile}/mi - confirmed with address`, amount: 'TBD' });
 
   const confirmOnSite = !!(yd || dh || loads > 1);
-  return { custom: false, confirm_on_site: confirmOnSite, dump_included: !!df, low: r5(lo), high: r5(hi), lines, travel_to_confirm: city !== 'austin' };
+  const tp = partsInTz(new Date(), SCHED.timezone), qid = 'EW-' + String(tp.y).slice(2) + String(tp.m).padStart(2, '0') + String(tp.d).padStart(2, '0') + '-' + Math.floor(1000 + Math.random() * 9000);
+  return { id: qid, custom: false, confirm_on_site: confirmOnSite, dump_included: true, size, loads, miles, low: r5(lo), high: r5(hi), lines, travel_to_confirm: miles == null && city !== 'austin' };
 }
 
 /* Safety net: any $ amount the AI writes must come from pricing.json or from calculate_quote. */
 function guardPrices(reply, state, es) {
   const ok = new Set(), add = (n) => { if (isFinite(n)) ok.add(Math.round(n)); };
-  add(PRICING.fuelAustin); add(PRICING.stairs); add(PRICING.rate); Object.values(PRICING.items || {}).forEach(add);
+  add(PRICING.fuelAustin); add(PRICING.stairs); add(PRICING.rate); add(MILE.per_mile); Object.values(PRICING.items || {}).forEach(add);
   SUR_KEYS.forEach(k => (surRange(k) || []).forEach(add)); DENSE.forEach(add); DEMO.forEach(add);
   for (const z of Object.values(PRICING.sizes)) add(z.base);
   Object.values(DUMP).forEach(v => Array.isArray(v) && v.forEach(add));
@@ -176,6 +196,8 @@ const TOOLS = [{ functionDeclarations: [
       demolition_hours: { type: 'NUMBER', description: 'estimated extra crew hours on site to dismantle/demolish (shed, hot tub, deck, playset); 0 if none' },
       demolition_item: { type: 'STRING', description: 'what needs dismantling, if any' },
       est_weight_lbs: { type: 'NUMBER', description: 'your best estimate of the TOTAL weight in pounds of everything to haul (all loads). Reference: sofa 100-150, recliner 80, mattress 60-80, box spring 40, dresser 100-150, fridge 200-300, washer 150-200, dryer 120, TV 30-60, bags of trash 20-30 each, hot tub 500-900, shed debris 1000-3000, full trailer of household junk 1500-3000, full trailer of construction debris 3000-6000, 1 cu yd of dirt/concrete ~2500-4000. When unsure, estimate HIGHER.' },
+      town: { type: 'STRING', description: 'city/town of the job in lowercase, e.g. austin, round rock, pflugerville, cedar park, georgetown, leander, buda, kyle, san marcos' },
+      miles: { type: 'NUMBER', description: 'driving miles from central Austin if you can reasonably estimate them from the address; otherwise omit' },
       heavy_material: { type: 'BOOLEAN', description: 'true if the load is mostly construction/demolition debris, roofing, tile, dirt, concrete, rock or brick' }
     }, itemProps), required: ['size', 'city'] } },
   { name: 'check_availability', description: 'Returns the open appointment windows (Austin time) for the next days. Call before offering times.',
@@ -185,7 +207,8 @@ const TOOLS = [{ functionDeclarations: [
       name: { type: 'STRING' }, phone: { type: 'STRING' }, address: { type: 'STRING', description: 'service street address and city' },
       date: { type: 'STRING', description: 'YYYY-MM-DD from check_availability' }, window: { type: 'STRING', description: 'time window exactly as returned, e.g. 10am-12pm' },
       summary: { type: 'STRING', description: 'one or two sentences: what will be removed and the estimate' },
-      consent: { type: 'BOOLEAN', description: 'true only if the visitor clearly agreed to be contacted by call/text' } },
+      consent: { type: 'BOOLEAN', description: 'true only if the visitor clearly agreed to be contacted by call/text' },
+      crew_notes: { type: 'STRING', description: 'INTERNAL crew manifest (never shown to the customer): items to haul, recommended tools (appliance dolly, straps, Sawzall, cat litter for paint...), PPE, access notes, donation/recycling candidates.' } },
       required: ['name', 'phone', 'address', 'date', 'window', 'summary', 'consent'] } },
   { name: 'save_lead', description: 'Saves contact details for a follow-up call when the visitor does NOT want to book now. Only with name, mobile and permission to be contacted.',
     parameters: { type: 'OBJECT', properties: { name: { type: 'STRING' }, phone: { type: 'STRING' }, summary: { type: 'STRING' }, consent: { type: 'BOOLEAN' } }, required: ['name', 'phone', 'summary', 'consent'] } }
@@ -203,6 +226,8 @@ HOW TO QUOTE:
 - You need: what the items are (or photos), the city, and stairs (flights, no elevator).
 - Load sizes: single (one bulky item or up to ~3 small pieces), quarter (~1/4 truck), half, three_quarter, full (whole truck). More than one truck: "full" and loads = number of trucks. If between sizes, choose the larger.
 - Surcharges are added ONLY when the item is actually visible in a photo or the visitor mentions it. Never assume hidden items. Current surcharges: ${extras}. Dirt/concrete/debris ${range(...DENSE)} per cubic yard. Demolition/dismantling (sheds, hot tubs, decks) ${range(...DEMO)} per hour on site.
+- Count paint cans, mattresses and box springs separately (paint, mattress, box_spring). Fridges/freezers/AC always go in fridge (Freon removal). Pass town (and miles if you can estimate them) so mileage is charged.
+- When calling book_appointment, fill crew_notes with an internal crew manifest (tools, PPE, access, donation candidates). Never show crew notes to the customer.
 - Always estimate the total weight (est_weight_lbs) from what you see; the dump fee is calculated from that weight. When unsure, estimate higher so EcoWise does not lose money.
 - When you have enough information call calculate_quote. NEVER state a price, fee or total that did not come from calculate_quote. Explain the range simply: it is an estimate that already includes an estimated dump/disposal fee (the final dump fee is adjusted to the actual landfill ticket), and the exact price is confirmed in writing before loading. If confirm_on_site is true, say the crew confirms dense material/demolition on site.
 HOW TO BOOK:
@@ -231,7 +256,7 @@ async function runTool(name, args, state) {
   args = args && typeof args === 'object' ? args : {};
   if (name === 'calculate_quote') {
     const q = computeQuote(args); state.quote = q;
-    return { [q.dump_included ? 'estimated_total_including_dump_fee' : 'estimated_total_before_dump_fee']: `${money(q.low)} - ${money(q.high)}`, lines: q.lines.map(l => `${l.label} (${l.detail}): ${l.amount}`), confirm_on_site: q.confirm_on_site, travel_to_confirm: q.travel_to_confirm };
+    return { quote_id: q.id, [q.dump_included ? 'estimated_total_including_dump_fee' : 'estimated_total_before_dump_fee']: `${money(q.low)} - ${money(q.high)}`, lines: q.lines.map(l => `${l.label} (${l.detail}): ${l.amount}`), confirm_on_site: q.confirm_on_site, travel_to_confirm: q.travel_to_confirm };
   }
   if (name === 'check_availability') {
     const a = await availableSlots(); state.slots = a.slots; state.calendar = a.calendar;
@@ -248,12 +273,12 @@ async function runTool(name, args, state) {
     if (!day || !win) return { saved: false, error: 'That date/window is not available. Call check_availability and offer open windows.' };
     if (txt(args.address, 160).length < 6) return { saved: false, error: 'Need the full service address.' };
     const appt = { date: day.date, day: day.day, window: win, address: txt(args.address, 160), confirmed: false };
-    const est = state.quote ? `${money(state.quote.low)}-${money(state.quote.high)}` : '';
+    const est = state.quote ? `${money(state.quote.low)}-${money(state.quote.high)} (Quote ${state.quote.id})` : '';
     const name2 = txt(args.name, 60), phone = digits.slice(-10);
     let status = 'requested - team will text to confirm';
     if (CAL_URL()) {
       const r = windowRange(day.date, rawWindow(win));
-      const res = await calendar({ action: 'book', start: r.start, end: r.end, name: name2, phone, address: appt.address, estimate: est, summary: txt(args.summary, 400) }, 4500);
+      const res = await calendar({ action: 'book', start: r.start, end: r.end, name: name2, phone, address: appt.address, estimate: est, summary: (txt(args.summary, 250) + (args.crew_notes ? ' || CREW MANIFEST: ' + txt(args.crew_notes, 340) : '')).slice(0, 600) }, 4500);
       if (res && res.conflict) { state.slots = null; return { saved: false, error: 'That window was just taken. Call check_availability again and offer other windows.' }; }
       if (res && res.ok) { appt.confirmed = true; appt.eventId = res.eventId; status = 'booked on the EcoWise calendar - the team will text a reminder'; }
     }
