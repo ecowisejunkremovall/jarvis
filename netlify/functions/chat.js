@@ -126,11 +126,25 @@ function milesFor(a) {
 /* Address -> driving miles from the EcoWise base (OpenStreetMap Nominatim, free; straight line x road factor) */
 const BASE = Object.assign({ lat: 30.2672, lng: -97.7431, road_factor: 1.25 }, MILE.base || {});
 const geoCache = new Map();
+const geoInfo = new Map();                                            // address -> { building, levels } from OpenStreetMap (free)
 async function geocodeOne(q, signal) {
-  const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' + encodeURIComponent(/\btx\b|texas/i.test(q) ? q : q + ', Texas');
+  const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&extratags=1&q=' + encodeURIComponent(/\btx\b|texas/i.test(q) ? q : q + ', Texas');
   const r = await fetch(url, { signal, headers: { 'User-Agent': 'EcoWise-JARVIS/1.0 (ecowisejunkremovall.com)', 'Accept-Language': 'en' } });
   const j = r.ok ? await r.json() : [];
-  return j.length ? { lat: +j[0].lat, lng: +j[0].lon } : null;
+  if (!j.length) return null;
+  const x = j[0], ex = x.extratags || {};
+  return { lat: +x.lat, lng: +x.lon, building: String(ex.building || (x.category === 'building' ? x.type : '') || '').toLowerCase(), levels: parseInt(ex['building:levels'], 10) || null, kind: String(x.type || '') };
+}
+/* Optional, more precise: real driving miles from Google Routes API (only if GOOGLE_MAPS_KEY is set in Netlify) */
+async function googleMiles(addr, signal) {
+  const key = process.env.GOOGLE_MAPS_KEY; if (!key) return null;
+  try {
+    const r = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', { method: 'POST', signal,
+      headers: { 'content-type': 'application/json', 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'routes.distanceMeters' },
+      body: JSON.stringify({ origin: { location: { latLng: { latitude: BASE.lat, longitude: BASE.lng } } }, destination: { address: /\btx\b|texas/i.test(addr) ? addr : addr + ', TX' }, travelMode: 'DRIVE' }) });
+    const j = r.ok ? await r.json() : null, m = j && j.routes && j.routes[0] && j.routes[0].distanceMeters;
+    return m ? Math.max(1, Math.round(m / 1609.34)) : null;
+  } catch (e) { return null; }
 }
 async function milesFromAddress(addr, ms = 2500) {
   const q = txt(addr, 160); if (q.length < 4) return null;
@@ -141,14 +155,29 @@ async function milesFromAddress(addr, ms = 2500) {
   const tries = [q, zip, town && town.length > 2 ? town : null].filter((x, k, arr) => x && arr.indexOf(x) === k);
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
   try {
-    let p = null;
-    for (const c of tries) { p = await geocodeOne(c, ctl.signal); if (p) break; }
+    const gm = googleMiles(q, ctl.signal);                           // runs in parallel with OpenStreetMap
+    let p = null, exact = false;
+    for (const c of tries) { p = await geocodeOne(c, ctl.signal); if (p) { exact = c === q; break; } }
+    if (p && exact) geoInfo.set(q, { building: p.building, levels: p.levels, kind: p.kind });
+    const g = await gm;
+    if (g) { geoCache.set(q, g); return g; }
     if (!p) { geoCache.set(q, null); return null; }
     const R = 3958.8, rad = x => x * Math.PI / 180, dLat = rad(p.lat - BASE.lat), dLng = rad(p.lng - BASE.lng);
     const d = 2 * R * Math.asin(Math.sqrt(Math.sin(dLat / 2) ** 2 + Math.cos(rad(BASE.lat)) * Math.cos(rad(p.lat)) * Math.sin(dLng / 2) ** 2));
     const miles = Math.max(1, Math.round(d * BASE.road_factor));
     geoCache.set(q, miles); return miles;
   } catch (e) { console.error('geocode failed', e.name); return null; } finally { clearTimeout(t); }
+}
+/* Stairs hint from the address: apartment unit number + building data from the map */
+function addressAccess(addr, said) {
+  const info = geoInfo.get(txt(addr, 160)) || {}, m = String(addr || '').match(/(?:apt|apartment|unit|suite|ste|#|depto|departamento)\.?\s*#?\s*([a-z]?\d{3,4})\b/i);
+  const unit = m ? m[1].replace(/\D/g, '') : '', floor = unit.length === 3 ? parseInt(unit[0], 10) : 0;   // 3-digit units (305 = 3rd floor); 4-digit numbering varies by complex, so no guess
+  const apt = /apartment|residential|dormitory|flats/.test(info.building || '') || !!unit, house = /house|detached|bungalow|semidetached|terrace/.test(info.building || '');
+  const out = { building: info.building || (unit ? 'apartment (unit number)' : 'unknown'), levels: info.levels || null, unit_floor: floor || null, stairs: 0, elevator_likely: false };
+  if (said || house || !apt || floor < 2) return out;
+  if (info.levels === 1) return out;
+  if ((info.levels && info.levels >= 4) || floor >= 4) { out.elevator_likely = true; return out; }
+  out.stairs = Math.min(3, floor - 1); return out;
 }
 
 function computeQuote(a) {
@@ -164,7 +193,7 @@ function computeQuote(a) {
   add('load', sizeName + (loads > 1 ? ` x ${loads} loads` : ''), 'Truck space, by volume', z.base * loads, z.base * loads);
   add('load', 'Labor & loading', `${PRICING.crew}-person crew, ${z.hrs[0]}-${z.hrs[1]} hr`, PRICING.crew * PRICING.rate * z.hrs[0] * loads, PRICING.crew * PRICING.rate * z.hrs[1] * loads);
   const st = clampInt(a.stairs, 0, 10);
-  if (st) add('load', 'Stairs', `${st} flight${st > 1 ? 's' : ''}`, st * PRICING.stairs, st * PRICING.stairs);
+  if (st) add('load', 'Stairs', `${st} flight${st > 1 ? 's' : ''}${a.stairs_source === 'photo' ? ' (seen in photos)' : a.stairs_source === 'address' ? ' (upper-floor unit)' : ''}`, st * PRICING.stairs, st * PRICING.stairs);
   const dh = clampNum(a.demolition_hours, 0, 16);
   if (dh) add('load', 'Demolition / dismantling', `${a.demolition_item ? txt(a.demolition_item, 40) + ', ' : ''}~${dh} hr on site`, dh * DEMO[0], dh * DEMO[1]);
 
@@ -248,7 +277,7 @@ function linesEs(lines) {
   const D = s => String(s || '').replace('Truck space, by volume', 'Espacio en el camión, por volumen').replace(/(\d+)-person crew, /, 'Equipo de $1 personas, ')
     .replace(' hr on site', ' h en sitio').replace(/ hr$/, ' h').replace(' - adjusted to scale ticket', ' - se ajusta al ticket de báscula').replace('By weight', 'Por peso')
     .replace(', heavy/C&D', ', pesado/construcción').replace(' each', ' c/u').replace('Austin service area', 'Área de servicio de Austin').replace(/(\d+) mi free \+ /, '$1 mi gratis + ')
-    .replace(/First (\d+) mi free/, 'Primeras $1 mi gratis').replace(/^~([\d.]+) cu yd/, '~$1 yd³').replace(/(\d+) trips total - gate\/environmental fee/, '$1 viajes en total - cuota de entrada\/ambiental').replace(/(\d+) flights?/, '$1 tramo(s)').replace(' - confirmed with address', ' - se confirma con la dirección').replace('cu yd', 'yd³');
+    .replace(/First (\d+) mi free/, 'Primeras $1 mi gratis').replace(/^~([\d.]+) cu yd/, '~$1 yd³').replace(/(\d+) trips total - gate\/environmental fee/, '$1 viajes en total - cuota de entrada\/ambiental').replace(/(\d+) flights?/, '$1 tramo(s)').replace(' (seen in photos)', ' (visto en las fotos)').replace(' (upper-floor unit)', ' (departamento en piso alto)').replace(' - confirmed with address', ' - se confirma con la dirección').replace('cu yd', 'yd³');
   return lines.map(l => {
     let label = l.label;
     if (l.key && l.key.startsWith('sur:')) { const [, k, q] = l.key.split(':'); label = `${q} x ${(SUR[k] && SUR[k].label_es) || label}`; }
@@ -260,6 +289,9 @@ function linesEs(lines) {
 const PAY = { cash: ['Cash', 'Efectivo'], card: ['Credit/debit card', 'Tarjeta de crédito/débito'], zelle: ['Zelle', 'Zelle'], venmo: ['Venmo', 'Venmo'] };
 function payKey(v) { const k = String(v || '').toLowerCase(); return k.includes('zelle') ? 'zelle' : k.includes('venmo') ? 'venmo' : /card|tarjeta|credit|debit|cr[eé]dito|d[eé]bito/.test(k) ? 'card' : /cash|efectivo/.test(k) ? 'cash' : ''; }
 function payLabel(k, lang) { return PAY[k] ? PAY[k][lang === 'es' ? 1 : 0] : ''; }
+const userText = state => (state.userMsgs || []).join(' \n ');
+const CONSENT_RE = /\b(yes|yeah|yep|yup|sure|ok|okay|of course|go ahead|that'?s fine|fine|you can|you may|i agree|agree|consent|s[ií]|claro|dale|est[aá] bien|de acuerdo|acepto|pueden|puedes|con gusto|por supuesto|adelante)\b/i;
+const ACCESS_RE = /\b(stairs?|steps?|flights?|floor|ground|level|elevator|upstairs|downstairs|first|1st|2nd|3rd|garage|driveway|curb|yard|porch|escaleras?|escal[oó]n|piso|planta|nivel|elevador|primer|segundo|tercer|patio|cochera|garaje|banqueta|frente)\b/i;
 function cleanEmail(v) { const e = String(v || '').trim().toLowerCase(); return /^[^\s@<>"]{1,64}@[^\s@<>"]{1,190}\.[a-z]{2,}$/.test(e) ? e : ''; }
 function pdfData(q, lang, who) {
   if (!q) return null;
@@ -308,7 +340,8 @@ const TOOLS = [{ functionDeclarations: [
       area_name: { type: 'STRING', description: 'optional: where these items are (e.g. Garage, Backyard)' },
       items_seen: { type: 'STRING', description: 'short list of the main items' },
       city: { type: 'STRING', enum: ['austin', 'near', 'other'], description: 'austin = Austin; near = Round Rock, Cedar Park, Pflugerville, Georgetown, Leander, Buda, Kyle or San Marcos; other = anywhere else' },
-      stairs: { type: 'INTEGER', description: 'flights of stairs without elevator' },
+      stairs: { type: 'INTEGER', description: 'flights of stairs without elevator. If the visitor did not say, DEDUCE it from the photos (stairs, balcony/upper-floor view, apartment hallway, second-floor windows) and the address (an apartment unit like #2xx/#3xx usually means 2nd/3rd floor). Ground level = 0.' },
+      stairs_source: { type: 'STRING', enum: ['visitor', 'photo', 'address'], description: 'where the stairs number came from' },
       dense_cubic_yards: { type: 'NUMBER', description: 'cubic yards of dirt, concrete, rock, tile or heavy debris SEEN or mentioned; 0 if none' },
       demolition_hours: { type: 'NUMBER', description: 'estimated extra crew hours on site to dismantle/demolish (shed, hot tub, deck, playset); 0 if none' },
       demolition_item: { type: 'STRING', description: 'what needs dismantling, if any' },
@@ -342,7 +375,7 @@ HOW TO QUOTE:
 - LANGUAGE: follow the LANGUAGE RULE at the end of these instructions exactly. Never mix languages and never switch language on your own. Be warm, confident, human and brief (2-4 short sentences). For the intake you may ask several details at once as a short numbered list (one per line), otherwise ask at most two questions at a time.
 - Look carefully at every photo: count every item, judge the total volume, and notice heavy/dense material or anything that must be dismantled.
 - PROFESSIONAL INTAKE (like a real estimator, warm and human): BEFORE giving any price you must have: (1) what is being removed (photos or description), (2) the visitor's first name, (3) mobile number, (4) email (so we can send the itemized quote PDF; if they prefer not to give it, continue without it), (5) the pickup address, (6) stairs/access (flights without elevator, or ground level), (7) permission to call/text them about the quote.
-- When a photo arrives, first say in one short sentence what you see (e.g. "I can see a sofa, a mattress and about 6 bags"), then ask for the details you still need. Choose the most natural way: either one friendly message with a short numbered list of what you need (good when the visitor sent a photo and seems ready), or one or two questions at a time (good when the visitor is chatting casually). Never re-ask something already given, but always keep asking for anything still missing (stairs/access included). Never give a price before you have name, mobile, address and stairs/access. Permission to contact must be an explicit yes from the visitor; if they skipped it, ask once more in a friendly way before booking.
+- When a photo arrives, first say in one short sentence what you see (e.g. "I can see a sofa, a mattress and about 6 bags"), then ask for the details you still need. Choose the most natural way: either one friendly message with a short numbered list of what you need (good when the visitor sent a photo and seems ready), or one or two questions at a time (good when the visitor is chatting casually). Never re-ask something already given, but always keep asking for anything still missing (stairs/access included). Never give a price before you have name, mobile and address. STAIRS/ACCESS: ask once; if the visitor does not answer, do NOT keep asking: deduce it yourself from the photos (visible stairs, balcony or upper-floor view, apartment hallway) and the address (apartment unit numbers like #2xx/#3xx usually mean 2nd/3rd floor), pass it as stairs with stairs_source 'photo' or 'address' (calculate_quote also checks the address on the map: building type, floors, unit number, and adds stairs automatically for upper-floor apartments without elevator; it returns this in 'building' and 'stairs_charged'), and mention it briefly (e.g. "I included 1 flight of stairs based on your photos"). Permission to contact must be an explicit yes from the visitor; if they skipped it, ask once more in a friendly way before booking.
 - Do NOT ask only for the city. Ask for the full pickup address and explain why, e.g. in English: "Pricing can vary by area. Where would the pickup be? With the address I can give you a more accurate quote." (in Spanish, the same idea: "El precio puede variar según la zona. ¿Dónde sería la recogida? Con la dirección te doy una cotización más precisa.") If they prefer not to share it, a ZIP code or cross streets is enough. Infer city (austin / near / other) and town from the address, and pass the address to calculate_quote.
 - Load sizes: single (one bulky item or up to ~3 small pieces), quarter (~1/4 truck), half, three_quarter, full (whole truck). More than one truck: "full" and loads = number of trucks. If between sizes, choose the larger.
 - Surcharges are added ONLY when the item is actually visible in a photo or the visitor mentions it. Never assume hidden items. Current surcharges: ${extras}. Dirt/concrete/debris ${range(...DENSE)} per cubic yard. Demolition/dismantling (sheds, hot tubs, decks) ${range(...DEMO)} per hour on site.
@@ -398,12 +431,18 @@ async function runTool(name, args, state) {
   }
   if (name === 'calculate_quote') {
     if (state.lockedQuote) { const q = state.lockedQuote; state.quotedNow = true; return { quote_id: q.id, price_including_estimated_dump_fee: money(q.price), locked: true, note: 'Price locked from the photo estimate. Use exactly this price.', lines: q.lines.map(l => `${l.label} (${l.detail}): ${l.amount}`) }; }
+    const hasAreasAccess = state.project && state.project.areas && state.project.areas.some(x => x.stairs || x.access !== 'ground');
+    const hasPhotos = (state.photos && state.photos.length) || state.imgCount > 0;
+    if (!state.prev && !clampInt(args.stairs, 0, 10) && !hasAreasAccess && !hasPhotos && !ACCESS_RE.test(userText(state))) return { error: 'No price yet: ask the visitor about stairs/access first (ground level, or how many flights of stairs without elevator). Then call calculate_quote again.' };
     const prev = state.prev, norm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const addr = txt(args.address || (prev && prev.address) || '', 160);
     if (addr.length < 5) return { error: 'No price yet: ask for the full pickup address first (mileage is calculated from it).' };
     args.address = addr; state.address = addr;
     if (prev && prev.miles != null && norm(prev.address) === norm(addr)) args.miles = prev.miles;          // same address -> same mileage, same price
     else { const mi = await milesFromAddress(addr); if (mi) args.miles = mi; }
+    const saidAccess = /\b(ground|first floor|1st floor|no stairs|no steps|garage|driveway|curb|yard|planta baja|primer piso|sin escaleras|cochera|garaje|patio|banqueta)\b/i.test(userText(state));
+    const acc = addressAccess(addr, saidAccess || clampInt(args.stairs, 0, 10) > 0);
+    if (acc.stairs && !clampInt(args.stairs, 0, 10)) { args.stairs = acc.stairs; args.stairs_source = 'address'; }
     if (state.mergeN && state.project) { const nb = computeQuote(Object.assign({}, args, { address: addr })).basis, ar = areaFromBasis(nb, txt(args.area_name, 40) || (state.lang === 'es' ? 'Área ' : 'Area ') + (++state.mergeN)); if (ar && state.project.areas.length < 12) state.project.areas.push(ar); }
     else if (!(state.project && state.project.areas && state.project.areas.length) && state.quotedNow && state.quote && state.quote.basis && !state.quote.project) {
       // called again in the same turn (e.g. one call per photo of different places): merge everything into ONE job
@@ -417,7 +456,7 @@ async function runTool(name, args, state) {
     q.walkthrough = !!((q.project && (q.total_cubic_yards > 32 || areas.length >= 4)) || q.loads > 2); if (!areas && args.area_name) q.areaName = txt(args.area_name, 40);
     state.quote = q; state.quotedNow = true;
     if (prev && prev.price && q.price !== prev.price) q.revised_from = prev.price;
-    return { quote_id: q.id, price_including_estimated_dump_fee: money(q.price), lines: q.lines.map(l => `${l.label} (${l.detail}): ${l.amount}`), confirm_on_site: q.confirm_on_site, travel_to_confirm: q.travel_to_confirm, project: q.project ? { areas: areas.length, total_cubic_yards: q.total_cubic_yards, truck_loads: q.truck_loads } : undefined, walkthrough_required: q.walkthrough || undefined, note: q.project ? 'ONE combined price for ALL areas/photos of this job (mileage included). Give only this total; never a separate price per photo.' : 'Mileage from the pickup address is already included. This is the ONE final price; do not quote again unless the visitor adds or changes items.' };
+    return { quote_id: q.id, price_including_estimated_dump_fee: money(q.price), lines: q.lines.map(l => `${l.label} (${l.detail}): ${l.amount}`), confirm_on_site: q.confirm_on_site, travel_to_confirm: q.travel_to_confirm, project: q.project ? { areas: areas.length, total_cubic_yards: q.total_cubic_yards, truck_loads: q.truck_loads } : undefined, walkthrough_required: q.walkthrough || undefined, building: acc, stairs_charged: clampInt(args.stairs, 0, 10), stairs_source: args.stairs_source || undefined, note: q.project ? 'ONE combined price for ALL areas/photos of this job (mileage included). Give only this total; never a separate price per photo.' : 'Mileage from the pickup address is already included. This is the ONE final price; do not quote again unless the visitor adds or changes items.' };
   }
   if (name === 'check_availability') {
     const a = await availableSlots(); state.slots = a.slots; state.calendar = a.calendar;
@@ -425,7 +464,7 @@ async function runTool(name, args, state) {
   }
   const digits = String(args.phone || '').replace(/\D/g, '');
   if (name === 'book_appointment' || name === 'save_lead') {
-    if (args.consent !== true) return { saved: false, error: 'Visitor has not clearly agreed to be contacted. Ask for permission first.' };
+    if (args.consent !== true || !(state.lockedQuote || CONSENT_RE.test(userText(state)))) return { saved: false, error: 'The visitor has NOT explicitly said yes to being contacted. Ask one short friendly question: may we call or text them about this quote/appointment? Then call this tool again after they say yes.' };
     if (digits.length < 10 || txt(args.name, 60).length < 2) return { saved: false, error: 'Need a valid name and 10-digit mobile number.' };
   }
   if (name === 'book_appointment') {
@@ -486,7 +525,9 @@ function codeReply(state, es) {
   if (L) return es ? `Gracias, ${L.name}. Un miembro de EcoWise te contactará pronto.` : `Thanks, ${L.name}. Someone from EcoWise will reach out soon.`;
   if (q) return es ? `Tu precio es de ${money(q.price)}, incluyendo la tarifa de descarga estimada. El precio exacto se confirma por escrito antes de cargar. ¿Quieres agendar?`
                    : `Your price is ${money(q.price)}, including the estimated dump fee. The exact price is confirmed in writing before we load. Would you like to book?`;
-  return es ? 'Perdón, ¿puedes repetirlo con otras palabras? También puedes llamar o escribir al (512) 369-2644.' : 'Sorry, could you rephrase that? You can also call or text (512) 369-2644.';
+  const lq = String(state.lastAssistant || '').split(/(?<=[.!?])\s+/).filter(x => /\?\s*$/.test(x)).slice(-2).join(' ');
+  if (lq) return (es ? 'Solo para confirmar: ' : 'Just to confirm: ') + lq.charAt(0).toLowerCase() + lq.slice(1);
+  return es ? '¡Claro! ¿Me cuentas un poco más sobre lo que necesitas recoger y dónde sería la recogida?' : 'Sure! Could you tell me a bit more about what you need picked up and where the pickup would be?';
 }
 
 /* ---------- Itemized quote PDF (customer's language, logo watermark, customer photos) ---------- */
@@ -700,6 +741,8 @@ exports.handler = async (event) => {
   const pvq = verifyQuote(body.prev), pv = pvq || (body.prev && typeof body.prev === 'object' ? body.prev : null);
   const project = body.project && Array.isArray(body.project.areas) ? { areas: body.project.areas.slice(0, 12).map(cleanArea).filter(Boolean) } : null;
   const state = { photos, lang, project, prev: pv ? { id: txt(pv.id, 40), price: clampNum(pv.price, 0, 100000), miles: pv.miles == null ? null : clampNum(pv.miles, 0, 300), address: txt(pv.address, 160) } : null }, t0 = Date.now(), DEADLINE = 8300, sys = systemPrompt() + `\nLANGUAGE RULE: The visitor's device/system language is ${uiLang === 'es' ? 'Spanish' : 'English'}. Their latest message is in ${LN}. Write your ENTIRE reply in ${LN} only. Do not use the other language, not even a greeting.`;
+  state.imgCount = imgs.length;
+  state.userMsgs = raw.filter(m => m && m.role !== 'assistant').map(m => txt(m.text, 400));
   if (pvq && !state.quote) state.quote = pvq;                         // the quote given earlier in this conversation (signed, cannot be altered)
   if (body.locked) { try { const lq = await lockedQuote(body.locked, lang); if (lq) { state.quote = lq; state.lockedQuote = lq; if (lq.address) state.address = lq.address; } } catch (e) { console.error('lock failed', e.message); } }
   const walkNote = state.quote && state.quote.walkthrough && !state.lockedQuote ? `\nWALKTHROUGH MODE: quote ${state.quote.id} (${money(state.quote.price)}) is a PRELIMINARY estimate for a large project. The appointment windows are for a FREE on-site walkthrough (20-30 min), not the pickup. Do NOT ask for a payment method. When the visitor picks a window and agrees, call book_appointment right away.` : '';
@@ -724,7 +767,7 @@ exports.handler = async (event) => {
       if (r.status === 429) return resp(429, { error: 'busy' });
       if (!r.ok) { console.error('gemini', r.status, usedModel, (await r.text()).slice(0, 300)); return resp(502, { error: 'AI service error', detail: 'google ' + r.status }); }
       const data = await r.json(), cand = (data.candidates || [])[0];
-      if (!cand || !cand.content || !cand.content.parts) { console.error('no candidate', JSON.stringify(data.promptFeedback || {}).slice(0, 200)); return resp(502, { error: 'AI could not answer' }); }
+      if (!cand || !cand.content || !cand.content.parts) { console.error('no candidate', JSON.stringify(data.promptFeedback || {}).slice(0, 200)); break; }
       const fcs = cand.content.parts.filter(p => p.functionCall);
       if (!fcs.length) { reply = cand.content.parts.map(p => p.text || '').join('').trim(); break; }
       contents.push(cand.content);
@@ -740,7 +783,7 @@ exports.handler = async (event) => {
   console.log('chat ms', Date.now() - t0, usedModel);
   let codeSlots = false;                                              // after a quote, always show open windows (even if the model forgot to check)
   if (state.quotedNow && !state.slots && !(state.lead && state.lead.appointment) && left() > 1200) { try { const a = await availableSlots(); state.slots = a.slots; state.calendar = a.calendar; codeSlots = !!(a.slots && a.slots.length); } catch (e) {} }
-  const lastU = [...(Array.isArray(body.messages) ? body.messages : [])].reverse().find(m => m && m.role === 'user'); state.lastUser = lastU ? txt(lastU.text, 200) : '';
+  const lastU = [...(Array.isArray(body.messages) ? body.messages : [])].reverse().find(m => m && m.role === 'user'); state.lastUser = lastU ? txt(lastU.text, 200) : ''; const lastA = [...(Array.isArray(body.messages) ? body.messages : [])].reverse().find(m => m && m.role === 'assistant'); state.lastAssistant = lastA ? txt(lastA.text, 600) : '';
   const modelReply = guardPrices(txt(reply, 1200), state, es);
   reply = modelReply || codeReply(state, es);
   reply = reply.replace(/\*\*|__/g, '');
