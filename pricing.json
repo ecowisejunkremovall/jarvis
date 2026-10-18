@@ -42,44 +42,54 @@
     }
   },
   "items": {
-    "fridge": 50,
-    "mattress": 40,
+    "fridge": 95,
+    "mattress": 45,
+    "box_spring": 45,
+    "washer_dryer": 40,
+    "paint": 15,
     "tv": 20,
     "tire": 15,
     "tire_rim": 25
   },
   "surcharges": {
-    "_comment": "Only added when the item is seen in a photo or mentioned by the customer.",
+    "_comment": "Only added when the item is seen in a photo or mentioned. Based on Austin TDS gate rates + handling. Ranges are [low, high] per unit.",
+    "fridge": {
+      "label": "Refrigerator / freezer (Freon removal + gate fee)",
+      "range": [
+        90,
+        100
+      ]
+    },
     "mattress": {
-      "label": "Mattress",
+      "label": "Mattress (landfill gate fee)",
       "range": [
         40,
         60
       ]
     },
     "box_spring": {
-      "label": "Box spring",
+      "label": "Box spring (landfill gate fee)",
       "range": [
         40,
         60
       ]
     },
-    "fridge": {
-      "label": "Refrigerator/freezer/AC (Freon)",
-      "range": [
-        50,
-        50
-      ]
-    },
     "washer_dryer": {
-      "label": "Washer or dryer",
+      "label": "Washer / dryer",
       "range": [
         40,
         40
       ]
     },
+    "paint": {
+      "label": "Paint can (solidification)",
+      "range": [
+        15,
+        15
+      ]
+    },
     "tv": {
-      "label": "TV/monitor",
+      "label": "TV / monitor (e-waste)",
       "range": [
         20,
         20
@@ -142,6 +152,22 @@
     ],
     "safety_pct": 15,
     "weight_range_pct": 20
+  },
+  "mileage": {
+    "_comment": "Distance from Austin base. First free_miles are free, then per_mile. city_miles is used when the exact distance is unknown.",
+    "free_miles": 10,
+    "per_mile": 3,
+    "city_miles": {
+      "austin": 8,
+      "pflugerville": 17,
+      "round rock": 20,
+      "cedar park": 20,
+      "buda": 17,
+      "kyle": 22,
+      "leander": 27,
+      "georgetown": 28,
+      "san marcos": 32
+    }
   },
   "schedule": {
     "timezone": "America/Chicago",
