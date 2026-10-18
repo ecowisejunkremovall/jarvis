@@ -566,6 +566,11 @@ input::placeholder,textarea::placeholder{color:#6f8a7a;}
 .ai-in{background:#0a1511!important;border-color:#2f5440!important}.ai-in:hover{border-color:#4d7d62!important}
 #aiGo{position:relative;overflow:hidden;font-size:.95rem!important;padding:1rem 1.5rem!important}#aiGo::after{content:"";position:absolute;top:0;left:-60%;width:40%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.38),transparent);transform:skewX(-20deg);animation:aishine 3.4s ease-in-out infinite}@keyframes aishine{0%,60%{left:-60%}100%{left:130%}}
 #aiGo:disabled{opacity:.7;cursor:wait}
+/* glint on every main button (same as "Get my estimate") */
+.btn-copper,#ecSend,#mbar a.primary{position:relative;overflow:hidden;isolation:isolate}
+.btn-copper::after,#ecSend::after,#mbar a.primary::after{content:"";position:absolute;top:0;left:-60%;width:40%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.38),transparent);transform:skewX(-20deg);animation:aishine 3.4s ease-in-out infinite;animation-delay:var(--shine-delay,0s);pointer-events:none;z-index:1}
+@media (prefers-reduced-motion:reduce){.btn-copper::after,#ecSend::after{animation:none;display:none}}
+
 .ai-truckwrap{border:1px solid rgba(140,196,162,.22);border-radius:18px;padding:12px 12px 10px;background:radial-gradient(ellipse at 50% 100%,rgba(181,114,58,.14),transparent 65%),linear-gradient(rgba(140,196,162,.05) 1px,transparent 1px) 0 0/100% 18px,#08120e}
 .ai-tw-t{display:flex;justify-content:space-between;margin:0 0 4px;font-size:.62rem;font-weight:800;letter-spacing:.16em;color:#8cc4a2}
 .ai-legend{display:flex;gap:16px;justify-content:center;font-size:.68rem;color:#a9baaf;margin-top:2px}.ai-legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;vertical-align:-1px}
@@ -2188,13 +2193,134 @@ document.addEventListener('click', function(e){
 #ecInput{flex:1;min-width:0;padding:10px 12px;border-radius:12px;border:1.5px solid #2b4a37;background:#04141a;color:#e9efe9;font-size:14px}
 #ecForm button{width:42px;border-radius:12px;border:none;background:#12301f;color:#fff;font-size:18px;cursor:pointer}#ecSend{background:#b5723a !important}
 #ecFoot{margin:0;padding:6px 12px 10px;font-size:11px;color:#8fa397;background:#0b1712}
+/*m*/
+/* ---- JARVIS mascot ---- */
+#ecoChatBtn.ec-mascot{background:transparent;box-shadow:none;padding:0;min-width:0;width:auto;height:auto;gap:0;align-items:flex-end;bottom:86px;right:18px}
+#ecoChatBtn.ec-mascot .ec-bot{width:98px;height:108px;display:block;filter:drop-shadow(0 8px 14px rgba(0,0,0,.45));animation:ecFloat 3.2s ease-in-out infinite;transform-origin:50% 100%}
+#ecoChatBtn.ec-mascot:hover .ec-bot{animation:ecHop .6s ease-out}
+#ecoChatBtn.ec-mascot .ec-tag{margin:0 0 18px -6px;background:#b5723a;color:#fff;font:800 13px/1 system-ui,sans-serif;padding:10px 14px;border-radius:999px;box-shadow:0 6px 18px rgba(0,0,0,.35);white-space:nowrap}
+.ec-bot .ec-eye{transform-box:fill-box;transform-origin:center;animation:ecBlink 4.6s infinite}
+.ec-bot .ec-pupils{transition:transform .18s ease-out}
+.ec-bot .ec-leaf{transform-box:fill-box;transform-origin:0% 100%;animation:ecSway 2.6s ease-in-out infinite}
+.ec-bot .ec-arm{transform-box:fill-box;transform-origin:10% 90%}
+.ec-bot.waving .ec-arm{animation:ecWave 1.2s ease-in-out 2}
+.ec-bot .ec-glow{animation:ecGlow 2.4s ease-in-out infinite}
+.ec-bot .ec-mouth{transition:d .2s}
+@keyframes ecFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes ecHop{0%{transform:translateY(0) scale(1)}40%{transform:translateY(-10px) scale(1.04,.97)}100%{transform:translateY(0) scale(1)}}
+@keyframes ecBlink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.08)}}
+@keyframes ecSway{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(10deg)}}
+@keyframes ecWave{0%,100%{transform:rotate(0)}25%{transform:rotate(-28deg)}50%{transform:rotate(8deg)}75%{transform:rotate(-24deg)}}
+@keyframes ecGlow{0%,100%{opacity:.55}50%{opacity:1}}
+#ecBubble{position:fixed;right:22px;bottom:204px;max-width:240px;background:#fff;color:#1d2a22;border-radius:16px 16px 4px 16px;padding:12px 30px 12px 14px;font:600 14px/1.35 system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.35);z-index:9998;cursor:pointer;opacity:0;transform:translateY(8px) scale(.96);transition:opacity .35s,transform .35s;pointer-events:none}
+#ecBubble.show{opacity:1;transform:none;pointer-events:auto}
+#ecBubble b{color:#b5723a}
+#ecBubble button{position:absolute;top:4px;right:6px;border:none;background:none;font-size:16px;color:#888;cursor:pointer;line-height:1}
+#ecBubble .ec-typing{display:inline-flex;gap:3px}#ecBubble .ec-typing i{width:6px;height:6px;border-radius:50%;background:#b5723a;animation:ecd 1s infinite}#ecBubble .ec-typing i:nth-child(2){animation-delay:.15s}#ecBubble .ec-typing i:nth-child(3){animation-delay:.3s}
+#ecoChat header .ec-mini{width:26px;height:28px;margin-right:8px;vertical-align:middle;flex:none}
+@media (max-width:767px){#ecoChatBtn.ec-mascot{bottom:150px;right:10px;width:auto}#ecoChatBtn.ec-mascot .ec-tag{display:none}#ecoChatBtn.ec-mascot .ec-bot{width:70px;height:77px}#ecBubble{right:14px;bottom:236px;max-width:210px;font-size:13px}}
+@media (prefers-reduced-motion:reduce){.ec-bot,.ec-bot *{animation:none !important}}
+
 @media (max-width:767px){#ecoChatBtn{bottom:158px;right:16px;padding:0;width:60px}#ecoChatBtn span{display:none}#waFloat{right:16px !important}#ecoChat{left:8px;right:8px;width:auto;bottom:78px;height:min(72vh,600px)}}
+/* ===== JARVIS v2 polish ===== */
+html{scroll-behavior:smooth}
+::selection{background:rgba(181,114,58,.35);color:#fff}
+#ecoChat{display:flex !important;opacity:0;visibility:hidden;pointer-events:none;transform:translateY(18px) scale(.96);transform-origin:100% 100%;
+  transition:opacity .28s ease,transform .32s cubic-bezier(.2,.9,.25,1.15),visibility 0s linear .32s;
+  bottom:212px;height:min(600px,calc(100vh - 240px));border-radius:22px;border:1px solid rgba(140,196,162,.18);
+  background:radial-gradient(120% 60% at 100% 0%,rgba(181,114,58,.10),transparent 60%),radial-gradient(90% 50% at 0% 100%,rgba(95,227,154,.07),transparent 60%),#06130f;
+  box-shadow:0 24px 70px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.03) inset;backdrop-filter:blur(10px)}
+#ecoChat.open{opacity:1;visibility:visible;pointer-events:auto;transform:none;transition:opacity .28s ease,transform .32s cubic-bezier(.2,.9,.25,1.15),visibility 0s}
+#ecoChat header{padding:14px 16px;background:linear-gradient(135deg,#1a3328 0%,#0f2219 55%,#2a1c10 140%);border-bottom:1px solid rgba(140,196,162,.14)}
+#ecoChat header .ec-mini{width:34px;height:34px;padding:3px;border-radius:50%;background:radial-gradient(circle at 50% 40%,#1f3b2f,#0b1a13);box-shadow:0 0 0 2px rgba(181,114,58,.55),0 4px 12px rgba(0,0,0,.4)}
+#ecTitle{font-size:15px;letter-spacing:.01em}
+#ecStatus{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:500;color:#8cc4a2;margin-top:2px}
+#ecStatus i{width:7px;height:7px;border-radius:50%;background:#5fe39a;box-shadow:0 0 0 0 rgba(95,227,154,.6);animation:ecPulse 2s infinite}
+@keyframes ecPulse{0%{box-shadow:0 0 0 0 rgba(95,227,154,.55)}70%{box-shadow:0 0 0 7px rgba(95,227,154,0)}100%{box-shadow:0 0 0 0 rgba(95,227,154,0)}}
+#ecoChat header button{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:background .2s,transform .2s}
+#ecoChat header button:hover{background:rgba(255,255,255,.08);transform:rotate(90deg)}
+#ecLog{padding:16px 14px;gap:10px;scroll-behavior:smooth;scrollbar-width:thin;scrollbar-color:#2b4a37 transparent}
+#ecLog::-webkit-scrollbar{width:6px}#ecLog::-webkit-scrollbar-thumb{background:#2b4a37;border-radius:6px}
+.ec-m{padding:10px 14px;line-height:1.5;font-size:14px;animation:ecIn .32s cubic-bezier(.2,.9,.3,1.1) both}
+@keyframes ecIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+.ec-a{background:linear-gradient(180deg,#132a20,#0f2219);border:1px solid rgba(140,196,162,.14);border-radius:4px 18px 18px 18px;box-shadow:0 2px 10px rgba(0,0,0,.18)}
+.ec-u{background:linear-gradient(135deg,#d0894c,#a8622c);border-radius:18px 4px 18px 18px;box-shadow:0 6px 16px rgba(181,114,58,.28)}
+.ec-n{background:rgba(95,227,154,.08);border:1px solid rgba(95,227,154,.2);padding:5px 12px;border-radius:999px;animation:ecIn .3s both}
+.ec-q{background:linear-gradient(180deg,#2e1f12,#22170d);border:1px solid rgba(217,176,120,.28);border-radius:18px;padding:14px 14px 12px;box-shadow:0 10px 28px rgba(0,0,0,.35),0 0 0 1px rgba(255,255,255,.02) inset;animation:ecIn .4s both}
+.ec-qb{font-size:13.5px}
+.ec-ql{padding:7px 0;font-size:12.8px}
+.ec-qtot{margin-top:12px;padding:12px 12px;border:none;border-radius:12px;background:linear-gradient(135deg,rgba(217,176,120,.16),rgba(181,114,58,.06))}
+.ec-qtot b{font-size:24px;background:linear-gradient(135deg,#fff,#f1c995);-webkit-background-clip:text;background-clip:text;color:transparent}
+.ec-dots{border-radius:4px 18px 18px 18px;background:#132a20;border:1px solid rgba(140,196,162,.14);padding:12px 14px}
+.ec-dots i{animation:ecBounce 1.1s infinite ease-in-out}
+@keyframes ecBounce{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-4px);opacity:1}}
+#ecChips{padding:2px 14px 10px;gap:8px}
+#ecChips[hidden]{display:none !important}
+#ecChips button{background:rgba(18,48,31,.7);border:1px solid rgba(140,196,162,.25);color:#e2ece5;padding:7px 13px;font-size:12.8px;transition:background .2s,border-color .2s,transform .15s}
+#ecChips button:hover{background:#1a4430;border-color:#5fe39a;transform:translateY(-1px)}
+#ecForm{padding:10px 12px;gap:8px;background:rgba(8,20,15,.92);border-top:1px solid rgba(140,196,162,.12)}
+#ecInput{border-radius:14px;border:1.5px solid rgba(140,196,162,.22);background:#04110c;padding:11px 14px;transition:border-color .2s,box-shadow .2s}
+#ecInput:focus{outline:none;border-color:#5fe39a;box-shadow:0 0 0 4px rgba(95,227,154,.12)}
+#ecInput::placeholder{color:#6d8578}
+#ecForm button{width:44px;height:44px;border-radius:14px;transition:transform .15s,filter .2s,background .2s}
+#ecAttach{background:rgba(18,48,31,.8) !important;border:1px solid rgba(140,196,162,.22) !important}
+#ecAttach:hover{background:#1a4430 !important}
+#ecSend{background:linear-gradient(135deg,#d6914f,#a8622c) !important;box-shadow:0 6px 16px rgba(181,114,58,.35)}
+#ecSend:hover{transform:translateY(-1px) scale(1.04);filter:brightness(1.08)}
+#ecSend:active,#ecAttach:active{transform:scale(.95)}
+#ecThumbs div{border-radius:10px;border-color:rgba(140,196,162,.3)}
+#ecFoot{background:rgba(8,20,15,.92);color:#6f8a7b;text-align:center;padding:4px 12px 10px}
+/* mascot polish */
+#ecoChatBtn.ec-mascot{transition:transform .25s}
+#ecoChatBtn.ec-mascot::after{content:'';position:absolute;left:50%;bottom:-4px;width:54px;height:10px;margin-left:-27px;border-radius:50%;background:radial-gradient(closest-side,rgba(0,0,0,.45),transparent);animation:ecShadow 3.2s ease-in-out infinite;pointer-events:none}
+@keyframes ecShadow{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(.75);opacity:.5}}
+#ecoChatBtn.ec-mascot::before{content:'';position:absolute;top:10px;right:12px;width:14px;height:14px;border-radius:50%;background:#5fe39a;border:2px solid #06130f;box-shadow:0 0 0 0 rgba(95,227,154,.6);animation:ecPulse 2s infinite;z-index:2}
+#ecoChatBtn.ec-mascot[aria-expanded="true"]::before{display:none}
+#ecoChatBtn.ec-mascot:focus-visible{outline:none}#ecoChatBtn.ec-mascot:focus-visible .ec-bot{filter:drop-shadow(0 0 0 #fff) drop-shadow(0 0 6px #5fe39a)}
+#ecBubble{border-radius:18px 18px 6px 18px;padding:13px 32px 13px 15px;box-shadow:0 18px 40px rgba(0,0,0,.35),0 0 0 1px rgba(0,0,0,.04);background:linear-gradient(180deg,#fff,#f7f3ee)}
+#ecBubble::after{content:'';position:absolute;right:26px;bottom:-7px;width:14px;height:14px;background:#f7f3ee;transform:rotate(45deg);border-radius:3px}
+#ecBubble.show{animation:ecBubIn .45s cubic-bezier(.2,.9,.3,1.3)}
+@keyframes ecBubIn{0%{opacity:0;transform:translateY(10px) scale(.9)}100%{opacity:1;transform:none}}
+@media (max-width:767px){
+  #ecoChat{left:8px;right:8px;width:auto;bottom:calc(8px + env(safe-area-inset-bottom));height:min(78vh,640px);border-radius:22px;transform-origin:50% 100%}
+  #ecoChatBtn.ec-mascot[aria-expanded="true"]{opacity:0;pointer-events:none}
+}
+@media (prefers-reduced-motion:reduce){#ecoChat,#ecoChat *,#ecBubble{animation:none !important;transition:none !important}}
+
 </style>
-<button type="button" id="ecoChatBtn" aria-label="Chat and get a quote / Chatea y cotiza" aria-expanded="false" aria-controls="ecoChat">
-  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span>Chat &amp; Quote</span>
+<button type="button" id="ecoChatBtn" class="ec-mascot" aria-label="Chat with JARVIS and get a quote / Chatea con JARVIS y cotiza" aria-expanded="false" aria-controls="ecoChat"><svg class="ec-bot" viewBox="0 0 120 132" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="ecCopper" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d9935a"/><stop offset=".55" stop-color="#b5723a"/><stop offset="1" stop-color="#7c4a22"/></linearGradient>
+    <linearGradient id="ecScreen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#14382b"/><stop offset="1" stop-color="#071a14"/></linearGradient>
+    <radialGradient id="ecEye" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#d9ffe6"/><stop offset=".55" stop-color="#5fe39a"/><stop offset="1" stop-color="#1f9d5c"/></radialGradient>
+  </defs>
+  <!-- antenna + leaf -->
+  <line x1="60" y1="22" x2="60" y2="8" stroke="#7c4a22" stroke-width="3" stroke-linecap="round"/>
+  <g class="ec-leaf"><path d="M60 8 C 66 -2, 82 0, 84 6 C 76 12, 66 13, 60 8 Z" fill="#5fbf6b"/><path d="M61 8 C 68 5, 75 5, 82 6" stroke="#2f7a3d" stroke-width="1.2" fill="none"/></g>
+  <circle cx="60" cy="8" r="3.2" fill="#5fe39a" class="ec-glow"/>
+  <!-- arm (waves) -->
+  <g class="ec-arm"><path d="M96 92 C 106 86, 110 76, 108 66" stroke="#b5723a" stroke-width="7" stroke-linecap="round" fill="none"/><circle cx="108" cy="63" r="6.5" fill="url(#ecCopper)"/></g>
+  <path d="M24 92 C 14 98, 12 106, 16 112" stroke="#b5723a" stroke-width="7" stroke-linecap="round" fill="none"/><circle cx="17" cy="114" r="6" fill="url(#ecCopper)"/>
+  <!-- body -->
+  <rect x="30" y="80" width="60" height="44" rx="16" fill="url(#ecCopper)"/>
+  <rect x="42" y="92" width="36" height="20" rx="7" fill="#0f2a22"/>
+  <path d="M53 102 l4 4 l8 -9" stroke="#5fe39a" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" class="ec-glow"/>
+  <!-- head -->
+  <rect x="16" y="20" width="88" height="64" rx="26" fill="url(#ecCopper)"/>
+  <rect x="10" y="42" width="8" height="20" rx="4" fill="#7c4a22"/><rect x="102" y="42" width="8" height="20" rx="4" fill="#7c4a22"/>
+  <rect x="25" y="29" width="70" height="46" rx="19" fill="url(#ecScreen)"/>
+  <ellipse cx="44" cy="35" rx="14" ry="4" fill="#ffffff" opacity=".08"/>
+  <!-- eyes -->
+  <g class="ec-pupils">
+    <g class="ec-eye"><ellipse cx="46" cy="50" rx="8" ry="9.5" fill="url(#ecEye)"/><circle cx="48.5" cy="46.5" r="2.4" fill="#fff"/></g>
+    <g class="ec-eye"><ellipse cx="74" cy="50" rx="8" ry="9.5" fill="url(#ecEye)"/><circle cx="76.5" cy="46.5" r="2.4" fill="#fff"/></g>
+  </g>
+  <path class="ec-mouth" d="M52 64 Q60 70 68 64" stroke="#5fe39a" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <circle cx="34" cy="62" r="4" fill="#ff9b8a" opacity=".35"/><circle cx="86" cy="62" r="4" fill="#ff9b8a" opacity=".35"/>
+</svg>
 </button>
 <div id="ecoChat" role="dialog" aria-label="JARVIS by EcoWise">
-  <header><span id="ecTitle">JARVIS · EcoWise</span><button type="button" aria-label="Close chat">×</button></header>
+  <header><span style="display:flex;align-items:center"><svg class="ec-mini" viewBox="10 0 100 90" aria-hidden="true"><rect x="16" y="20" width="88" height="64" rx="26" fill="#b5723a"/><rect x="25" y="29" width="70" height="46" rx="19" fill="#0f2a22"/><ellipse cx="46" cy="50" rx="8" ry="9.5" fill="#5fe39a"/><ellipse cx="74" cy="50" rx="8" ry="9.5" fill="#5fe39a"/><path d="M60 20 V8" stroke="#7c4a22" stroke-width="3"/><path d="M60 8 C 66 -2, 82 0, 84 6 C 76 12, 66 13, 60 8 Z" fill="#5fbf6b"/></svg><span style="display:flex;flex-direction:column;line-height:1.2"><span id="ecTitle">JARVIS · EcoWise</span><small id="ecStatus"><i></i><span id="ecStatusTxt">Online · replies instantly</span></small></span></span><button type="button" aria-label="Close chat">×</button></header>
   <div id="ecLog" role="log" aria-live="polite"></div>
   <div id="ecChips"></div>
   <div id="ecThumbs"></div>
@@ -2266,6 +2392,31 @@ document.addEventListener('click', function(e){
 
 <script>
 document.addEventListener('click',function(e){var a=e.target.closest('a[href="#estimator"]');if(!a)return;var el=document.getElementById('estimator');if(!el)return;el.classList.remove('flash');void el.offsetWidth;el.classList.add('flash');setTimeout(function(){el.classList.remove('flash')},2200);},true);
+</script>
+<script>
+(function(){document.querySelectorAll('.btn-copper,#mbar a.primary').forEach(function(e,i){e.style.setProperty('--shine-delay',(i*0.45%3.4).toFixed(2)+'s')})})();
+(function(){
+  var btn=document.getElementById('ecoChatBtn'),chat=document.getElementById('ecoChat');if(!btn||!chat)return;
+  var es=/^es/i.test(navigator.language||''),st=document.getElementById('ecStatusTxt');if(st&&es)st.textContent='En l\u00ednea \u00b7 responde al instante';var bot=btn.querySelector('.ec-bot'),pupils=btn.querySelector('.ec-pupils'),mouth=btn.querySelector('.ec-mouth');
+  var bub=document.createElement('div');bub.id='ecBubble';bub.setAttribute('role','status');document.body.appendChild(bub);
+  var lines=es?['¡Hola! Soy <b>JARVIS</b> 👋','¿Te ayudo a deshacerte de cosas? Te doy un precio en segundos.']:['Hi! I’m <b>JARVIS</b> 👋','Need junk gone? I can quote you in seconds.'];
+  function isOpen(){return chat.classList.contains('open')}
+  function hide(){bub.classList.remove('show')}
+  function say(){if(isOpen())return;bub.innerHTML='<span class="ec-typing"><i></i><i></i><i></i></span><button type="button" aria-label="Close">×</button>';bub.classList.add('show');
+    if(bot){bot.classList.remove('waving');void bot.getBoundingClientRect();bot.classList.add('waving')}
+    if(mouth)mouth.setAttribute('d','M50 63 Q60 74 70 63');
+    setTimeout(function(){if(!bub.classList.contains('show'))return;bub.innerHTML=lines[0]+'<br>'+lines[1]+'<button type="button" aria-label="Close">×</button>';if(mouth)mouth.setAttribute('d','M52 64 Q60 70 68 64');},700);}
+  bub.addEventListener('click',function(e){if(e.target.tagName==='BUTTON'){hide();try{sessionStorage.setItem('ecBubX','1')}catch(x){}e.stopPropagation();return}hide();if(!isOpen())btn.click();});
+  btn.addEventListener('click',function(){hide()});
+  var seen=false;try{seen=!!sessionStorage.getItem('ecBubX')}catch(x){}
+  if(!seen){setTimeout(say,2500);setTimeout(function(){if(!isOpen()&&!bub.classList.contains('show'))say()},40000);}
+  /* eyes follow the cursor */
+  var raf=0;function look(dx,dy){if(!pupils)return;var d=Math.sqrt(dx*dx+dy*dy)||1,k=Math.min(1,d/260);pupils.style.transform='translate('+(dx/d*4.5*k).toFixed(2)+'px,'+(dy/d*3.5*k).toFixed(2)+'px)'}
+  document.addEventListener('mousemove',function(e){if(raf)return;raf=requestAnimationFrame(function(){raf=0;var r=btn.getBoundingClientRect();look(e.clientX-(r.left+r.width/2),e.clientY-(r.top+r.height*0.35))})},{passive:true});
+  if(window.matchMedia&&window.matchMedia('(hover:none)').matches){setInterval(function(){var a=Math.random()*Math.PI*2;look(Math.cos(a)*200,Math.sin(a)*120);setTimeout(function(){look(0,0)},1200)},3500)}
+  /* friendly wave now and then */
+  setInterval(function(){if(!isOpen()&&bot){bot.classList.remove('waving');void bot.getBoundingClientRect();bot.classList.add('waving')}},16000);
+})();
 </script>
 </body>
 </html>
