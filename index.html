@@ -17,7 +17,11 @@
 <meta name="twitter:card" content="summary"/>
 <meta name="twitter:image" content="https://ecowisejunkremovall.com/logo.webp"/>
 <meta name="theme-color" content="#030609"/>
-<link rel="apple-touch-icon" href="/logo.webp"/>
+<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
+<link rel="manifest" href="/manifest.webmanifest"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-title" content="EcoWise"/>
 <meta name="twitter:title" content="EcoWise Junk Removal – Austin, TX"/>
 <meta name="twitter:description" content="Same-day junk and furniture removal in Austin, TX. Free quote by photo."/>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%2307120c'/%3E%3Ctext x='50' y='68' font-size='55' text-anchor='middle' fill='%23b5723a' font-family='Arial' font-weight='900'%3EE%3C/text%3E%3C/svg%3E"/>
@@ -195,7 +199,12 @@ input::placeholder,textarea::placeholder{color:#6f8a7a;}
 }
 </script>
 <!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-V71TTPQ266"></script>
+<script>
+/* Analytics loads after the page is visible (doesn't slow the first paint) + service worker */
+(function(){var done=false;function ga(){if(done)return;done=true;var t=document.createElement('script');t.async=true;t.src='https://www.googletagmanager.com/gtag/js?id=G-V71TTPQ266';document.head.appendChild(t);}
+window.addEventListener('load',function(){setTimeout(ga,2500);if('serviceWorker'in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){});}});
+['pointerdown','keydown','scroll','touchstart'].forEach(function(ev){addEventListener(ev,ga,{once:true,passive:true});});})();
+</script>
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
@@ -2119,7 +2128,7 @@ input::placeholder,textarea::placeholder{color:#6f8a7a;}
   if (reduce) { for (let i = 0; i < 6; i++) load.push({ e: EMOJI[i], pop: 1 }); pile.push('📦', '🛋️'); frame(); running = false; return; }
   if ('IntersectionObserver' in window) new IntersectionObserver(([en]) => { const was = running; running = en.isIntersecting; if (running && !was) { lastT = 0; requestAnimationFrame(frame); } }).observe(hero);
   frame();
-})();};if(document.readyState==='complete')setTimeout(go,300);else window.addEventListener('load',function(){setTimeout(go,300)});})();
+})();};var started=false;function start(){if(started)return;started=true;go();}['pointerdown','pointermove','keydown','scroll','touchstart','wheel'].forEach(function(ev){addEventListener(ev,start,{once:true,passive:true});});function later(){setTimeout(function(){('requestIdleCallback'in window)?requestIdleCallback(start,{timeout:2000}):start();},6000);}if(document.readyState==='complete')later();else window.addEventListener('load',later);})();
 </script>
 <script>
 // Enlaces internos (#seccion): scroll suave dentro de la misma página.
