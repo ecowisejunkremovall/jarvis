@@ -74,7 +74,7 @@ Return ONLY a raw JSON object (no markdown) with EXACTLY this shape:
   "loads": 1,
   "confidence": "high" | "medium" | "low",
   "detected": [{"name": "short item name", "qty": 1}],
-  "special": {"fridge": 0, "mattress": 0, "box_spring": 0, "washer_dryer": 0, "paint": 0, "tv": 0, "tire": 0, "tire_rim": 0},
+  "special": {"fridge": 0, "mattress": 0, "box_spring": 0, "sofa": 0, "washer_dryer": 0, "paint": 0, "tv": 0, "tire": 0, "tire_rim": 0},
   "hazardous": false,
   "concrete_dirt_roofing": false,
   "hot_tub_piano_shed": false,
@@ -100,7 +100,7 @@ Return ONLY a raw JSON object (no markdown) with EXACTLY this shape:
   }
 }
 WEIGHT: estimate the TOTAL weight in pounds of everything visible (est_weight_lbs). Reference: sofa 100-150, mattress 60-80, dresser 100-150, fridge 200-300, washer 150-200, trash bag 20-30, hot tub 500-900, full trailer of household junk 1500-3000, full trailer of construction debris 3000-6000, 1 cu yd dirt/concrete 2500-4000. When unsure estimate HIGHER. heavy_material = true if mostly construction debris, roofing, tile, dirt, concrete, rock or brick.
-Rules: "special" counts paint = number of paint cans;  fridges/freezers/AC units, mattresses/box springs, TVs/monitors, tires without rims, tires with rims.
+Rules: "special" counts paint = number of paint cans;  fridges/freezers/AC units, mattresses/box springs, sofas/couches/recliners (sofa), TVs/monitors, tires without rims, tires with rims.
 If more than one truck is needed use size "full" and loads = number of trucks. If unsure, choose the larger size and lower confidence.`;
 }
 
@@ -139,7 +139,7 @@ exports.handler = async (event) => {
     const mileageFee = miles > 10 ? Math.round((miles - 10) * 3) : 0;
     const safeNotes = String(notes || 'None').slice(0, 300).replace(/"""/g, '');
 
-    const parts = images.slice(0, 3).map(b64 => {
+    const parts = images.slice(0, 5).map(b64 => {
       const s = String(b64);
       const mime = (s.match(/^data:([^;]+);base64,/) || [])[1] || 'image/jpeg';
       return { inlineData: { mimeType: mime, data: s.includes(',') ? s.split(',')[1] : s } };
@@ -196,7 +196,7 @@ exports.handler = async (event) => {
       notes: String(est.notes || '').slice(0, 240),
       model: usedModel
     };
-    ['fridge', 'mattress', 'box_spring', 'washer_dryer', 'paint', 'tv', 'tire', 'tire_rim'].forEach(k => { out.special[k] = Math.max(0, parseInt((est.special || {})[k], 10) || 0); });
+    ['fridge', 'mattress', 'box_spring', 'sofa', 'washer_dryer', 'paint', 'tv', 'tire', 'tire_rim'].forEach(k => { out.special[k] = Math.max(0, parseInt((est.special || {})[k], 10) || 0); });
     const jarvis = est.jarvis || {};
 
     // Optional sync to Base44 (EcoWise Central) — internal JARVIS data only goes here, not to the customer
