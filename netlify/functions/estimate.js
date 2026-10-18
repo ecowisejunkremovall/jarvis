@@ -4,7 +4,7 @@
    Env vars: GEMINI_API_KEY (required) · GEMINI_MODEL (optional) · BASE44_API_URL / BASE44_API_KEY (optional)
    Diagnostic: open /.netlify/functions/estimate?check=1 in the browser. */
 
-const FALLBACKS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
+const FALLBACKS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-flash-lite-latest'];
 const PRICING = require('../../pricing.json');
 const SIZES = Object.keys(PRICING.sizes);
 const SUR = PRICING.surcharges || {};
@@ -158,7 +158,7 @@ exports.handler = async (event) => {
           headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
           body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0.2 } })
         });
-        if (r.status !== 404) break;
+        if (r.status !== 404 && r.status !== 429) break;
         console.error('model not found:', m);
       }
     } catch (e) {
