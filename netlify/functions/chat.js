@@ -250,10 +250,10 @@ function systemPrompt() {
 Today in Austin is ${today.y}-${String(today.m).padStart(2, '0')}-${String(today.d).padStart(2, '0')}.
 YOUR JOB: give accurate junk removal quotes and book appointments. Work like an expert estimator.
 HOW TO QUOTE:
-- Reply in the visitor's language (English or Spanish). Be warm, confident and brief (2-4 short sentences). Ask at most two questions at a time.
+- LANGUAGE: follow the LANGUAGE RULE at the end of these instructions exactly. Never mix languages and never switch language on your own. Be warm, confident and brief (2-4 short sentences). Ask at most two questions at a time.
 - Look carefully at every photo: count every item, judge the total volume, and notice heavy/dense material or anything that must be dismantled.
 - You need: what the items are (or photos), the PICKUP ADDRESS, and stairs (flights, no elevator).
-- Do NOT ask only for the city. Ask for the pickup address and explain why, e.g. (Spanish) "El precio puede variar según la zona. ¿Dónde sería la recogida? Con la dirección te doy una cotización más precisa." / (English) "Pricing can vary by area. Where would the pickup be? With the address I can give you a more accurate quote." If they prefer not to share it, a ZIP code or cross streets is enough. Infer city (austin / near / other) and town from the address, and pass the address to calculate_quote.
+- Do NOT ask only for the city. Ask for the pickup address and explain why, e.g. in English: "Pricing can vary by area. Where would the pickup be? With the address I can give you a more accurate quote." (in Spanish, the same idea: "El precio puede variar según la zona. ¿Dónde sería la recogida? Con la dirección te doy una cotización más precisa.") If they prefer not to share it, a ZIP code or cross streets is enough. Infer city (austin / near / other) and town from the address, and pass the address to calculate_quote.
 - Load sizes: single (one bulky item or up to ~3 small pieces), quarter (~1/4 truck), half, three_quarter, full (whole truck). More than one truck: "full" and loads = number of trucks. If between sizes, choose the larger.
 - Surcharges are added ONLY when the item is actually visible in a photo or the visitor mentions it. Never assume hidden items. Current surcharges: ${extras}. Dirt/concrete/debris ${range(...DENSE)} per cubic yard. Demolition/dismantling (sheds, hot tubs, decks) ${range(...DEMO)} per hour on site.
 - Count paint cans, mattresses and box springs separately (paint, mattress, box_spring). Fridges/freezers/AC always go in fridge (Freon removal). Pass town (and miles if you can estimate them) so mileage is charged.
@@ -261,6 +261,7 @@ HOW TO QUOTE:
 - Always estimate the total weight (est_weight_lbs) from what you see; the dump fee is calculated from that weight. When unsure, estimate higher so EcoWise does not lose money.
 - When you have enough information call calculate_quote. NEVER state a price, fee or total that did not come from calculate_quote. Explain the range simply: it is an estimate that already includes an estimated dump/disposal fee (the final dump fee is adjusted to the actual landfill ticket), and the exact price is confirmed in writing before loading. If confirm_on_site is true, say the crew confirms dense material/demolition on site.
 HOW TO BOOK:
+- If the visitor arrives with a PHOTO ESTIMATE summary (size, items, total, name, mobile and consent), do not re-ask those. Only ask for the pickup address if it is not included (and stairs if unknown), call calculate_quote with that size/items and the address, then go straight to check_availability.
 - After a quote, offer to book. Call check_availability and offer 2-3 windows. Then collect name, mobile number, service address and clear permission to call/text. Then call book_appointment.
 - After book_appointment: if confirmed is true, tell them they are booked for that day and window and the team will text a reminder. If confirmed is false, say it is a REQUEST and the team will text to confirm. If a window was just taken, apologize and offer other open windows.
 - Only offer windows returned by check_availability; never invent times.
@@ -278,7 +279,7 @@ async function forwardLead(lead, quote, body) {
   if (lead.appointment && lead.appointment.confirmed) return true;   // the script already emailed the booking
   const transcript = (Array.isArray(body.messages) ? body.messages : []).slice(-12).map(m => (m && m.role === 'assistant' ? 'JARVIS: ' : 'Visitor: ') + txt(m && m.text, 300)).join('\n');
   const res = await calendar({ action: 'notify', kind: lead.appointment ? 'request' : 'lead', name: lead.name, phone: lead.phone, summary: lead.summary,
-    estimate: quote ? `${money(quote.low)}-${money(quote.high)}` : '', transcript }, 2500);
+    address: lead.address || '', estimate: quote ? `${money(quote.low)}-${money(quote.high)} (Quote ${quote.id})` : '', quote_lines: quote ? quote.lines.map(l => `${l.label} - ${l.detail}: ${l.amount}`).join('\n') : '', photos: lead.photos || [], transcript }, 4000);
   return !!(res && res.ok);
 }
 
@@ -310,16 +311,16 @@ async function runTool(name, args, state) {
     let status = 'requested - team will text to confirm';
     if (CAL_URL()) {
       const r = windowRange(day.date, rawWindow(win));
-      const res = await calendar({ action: 'book', start: r.start, end: r.end, name: name2, phone, address: appt.address, estimate: est, summary: (txt(args.summary, 250) + (args.crew_notes ? ' || CREW MANIFEST: ' + txt(args.crew_notes, 340) : '')).slice(0, 600) }, 4500);
+      const res = await calendar({ action: 'book', start: r.start, end: r.end, name: name2, phone, address: appt.address, estimate: est, summary: txt(args.summary, 300), crew_notes: txt(args.crew_notes, 800), quote_lines: state.quote ? state.quote.lines.map(l => `${l.label} - ${l.detail}: ${l.amount}`).join('\n') : '', photos: state.photos || [] }, 6000);
       if (res && res.conflict) { state.slots = null; return { saved: false, error: 'That window was just taken. Call check_availability again and offer other windows.' }; }
       if (res && res.ok) { appt.confirmed = true; appt.eventId = res.eventId; status = 'booked on the EcoWise calendar - the team will text a reminder'; }
     }
-    state.lead = { name: name2, phone, appointment: appt,
+    state.lead = { name: name2, phone, appointment: appt, address: appt.address, photos: state.photos || [],
       summary: `${appt.confirmed ? 'BOOKED' : 'APPOINTMENT REQUEST'}: ${appt.day} ${appt.window} at ${appt.address}. ${txt(args.summary, 300)}${est ? ` Estimate ${est} incl. est. dump fee.` : ''}` };
     return { saved: true, status, confirmed: appt.confirmed, appointment: { day: appt.day, window: appt.window, address: appt.address } };
   }
   if (name === 'save_lead') {
-    state.lead = { name: txt(args.name, 60), phone: digits.slice(-10), summary: txt(args.summary, 400) };
+    state.lead = { name: txt(args.name, 60), phone: digits.slice(-10), summary: txt(args.summary, 400), address: state.address || '', photos: state.photos || [] };
     return { saved: true };
   }
   return { error: 'unknown_tool' };
@@ -346,6 +347,16 @@ function codeReply(state, es) {
   if (q) return es ? `Tu estimado es de ${money(q.low)} a ${money(q.high)}, incluyendo la tarifa de descarga estimada. El precio exacto se confirma por escrito antes de cargar. ¿Quieres agendar?`
                    : `Your estimate is ${money(q.low)} to ${money(q.high)}, including the estimated dump fee. The exact price is confirmed in writing before we load. Would you like to book?`;
   return es ? 'Perdón, ¿puedes repetirlo con otras palabras? También puedes llamar o escribir al (512) 369-2644.' : 'Sorry, could you rephrase that? You can also call or text (512) 369-2644.';
+}
+
+/* Language: the visitor's own words win; otherwise the browser/system language */
+function detectLang(text) {
+  const t = ' ' + String(text || '').toLowerCase() + ' ';
+  const es = (t.match(/[ñáéíóú¿¡]| (hola|quiero|tengo|necesito|cuánto|cuanto|precio|basura|recoger|recogida|dirección|direccion|gracias|sí|por favor|muebles|colchón|colchon|sofá|refrigerador|mañana|semana|para|una|las|los|del|con|está|esta|es|y|mi|me|de|que|el|la)(?=[ .,!?])/g) || []).length;
+  const en = (t.match(/ (hi|hello|hey|i|i'm|i'd|want|need|have|how|much|price|quote|junk|pickup|pick up|address|thanks|thank|please|couch|sofa|mattress|fridge|tomorrow|week|the|and|my|is|are|to|of|for|with|can|you|it|a)(?=[ .,!?'])/g) || []).length;
+  if (es >= 2 && es > en * 1.2) return 'es';
+  if (en >= 2 && en > es * 1.2) return 'en';
+  return null;
 }
 
 exports.handler = async (event) => {
@@ -385,9 +396,13 @@ exports.handler = async (event) => {
     const mt = im.startsWith('/9j/') ? 'image/jpeg' : im.startsWith('iVBOR') ? 'image/png' : im.startsWith('UklG') ? 'image/webp' : null; if (!mt) return resp(400, { error: 'Unsupported image' });
     contents[contents.length - 1].parts.push({ inlineData: { mimeType: mt, data: im } });
   }
+  const photos = (Array.isArray(body.photos) ? body.photos : []).slice(0, 2).filter(x => typeof x === 'string' && x.length < 1600000 && /^[A-Za-z0-9+/=]+$/.test(x) && x.startsWith('/9j/'));
+  if (!photos.length) imgs.filter(x => x.startsWith('/9j/')).forEach(x => photos.push(x));
   const first = await getModel(key), models = [first].concat(FALLBACKS.filter(m => m !== first));
-  const es = body.lang === 'es';
-  const state = {}, t0 = Date.now(), DEADLINE = 8300, sys = systemPrompt() + (es ? '\nThe visitor\'s interface is in Spanish.' : '');
+  const lastUser = (raw.filter(m => m && m.role !== 'assistant').slice(-1)[0] || {}).text;
+  const uiLang = body.lang === 'es' ? 'es' : 'en', lang = detectLang(lastUser) || detectLang(raw.filter(m => m && m.role !== 'assistant').slice(-4).map(m => m.text).join(' ')) || uiLang, es = lang === 'es';
+  const LN = es ? 'Spanish' : 'English';
+  const state = { photos }, t0 = Date.now(), DEADLINE = 8300, sys = systemPrompt() + `\nLANGUAGE RULE: The visitor's device/system language is ${uiLang === 'es' ? 'Spanish' : 'English'}. Their latest message is in ${LN}. Write your ENTIRE reply in ${LN} only. Do not use the other language, not even a greeting.`;
   const left = () => DEADLINE - (Date.now() - t0);
   let usedModel = first, reply = '', noThink = true;
   const call = async (m) => {
@@ -423,7 +438,7 @@ exports.handler = async (event) => {
   }
   console.log('chat ms', Date.now() - t0, usedModel);
   reply = guardPrices(txt(reply, 1200), state, es) || codeReply(state, es);
-  const forwarded = state.lead && Date.now() - t0 < 7800 ? await forwardLead(state.lead, state.quote, body) : false;
-  return resp(200, { ok: true, reply, quote: state.quote || null, lead: state.lead || null, appointment: (state.lead && state.lead.appointment) || null, forwarded });
+  const forwarded = state.lead && Date.now() - t0 < 6000 ? await forwardLead(state.lead, state.quote, body) : false;
+  return resp(200, { ok: true, reply, quote: state.quote || null, lead: state.lead ? { name: state.lead.name, phone: state.lead.phone, summary: state.lead.summary } : null, appointment: (state.lead && state.lead.appointment) || null, forwarded });
 };
 exports._computeQuote = computeQuote; exports._openSlots = openSlots; exports._runTool = runTool; exports._localIso = localIso;
