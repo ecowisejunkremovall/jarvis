@@ -290,7 +290,11 @@ const PAY = { cash: ['Cash', 'Efectivo'], card: ['Credit/debit card', 'Tarjeta d
 function payKey(v) { const k = String(v || '').toLowerCase(); return k.includes('zelle') ? 'zelle' : k.includes('venmo') ? 'venmo' : /card|tarjeta|credit|debit|cr[eé]dito|d[eé]bito/.test(k) ? 'card' : /cash|efectivo/.test(k) ? 'cash' : ''; }
 function payLabel(k, lang) { return PAY[k] ? PAY[k][lang === 'es' ? 1 : 0] : ''; }
 const userText = state => (state.userMsgs || []).join(' \n ');
+const SHORT_YES = /^\s*(y|ye|yes|yep|yeah|ya|s|si|sí|ok|okay|okey|k|sure|claro|dale|va|sale|de acuerdo|of course|por supuesto|👍)\s*[.!]*\s*$/i;
+const saidYes = state => (state.userMsgs || []).some(m => SHORT_YES.test(m)) || CONSENT_RE.test(userText(state));
 const CONSENT_RE = /\b(yes|yeah|yep|yup|sure|ok|okay|of course|go ahead|that'?s fine|fine|you can|you may|i agree|agree|consent|s[ií]|claro|dale|est[aá] bien|de acuerdo|acepto|pueden|puedes|con gusto|por supuesto|adelante)\b/i;
+const EMAIL_RE = /[^\s@<>"]+@[^\s@<>"]+\.[a-z]{2,}/i, NO_EMAIL_RE = /\b(no (tengo )?(email|e-mail|correo)|don'?t have (an )?(email|e-mail)|no email|without (an )?email|prefer not|rather not|sin correo|no necesit|no quiero dar|no lo quiero)\b/i;
+const emailOk = state => EMAIL_RE.test(userText(state)) || NO_EMAIL_RE.test(userText(state));
 const ACCESS_RE = /\b(stairs?|steps?|flights?|floor|ground|level|elevator|upstairs|downstairs|first|1st|2nd|3rd|garage|driveway|curb|yard|porch|escaleras?|escal[oó]n|piso|planta|nivel|elevador|primer|segundo|tercer|patio|cochera|garaje|banqueta|frente)\b/i;
 function cleanEmail(v) { const e = String(v || '').trim().toLowerCase(); return /^[^\s@<>"]{1,64}@[^\s@<>"]{1,190}\.[a-z]{2,}$/.test(e) ? e : ''; }
 function pdfData(q, lang, who) {
@@ -374,7 +378,7 @@ YOUR JOB: give accurate junk removal quotes and book appointments. Work like an 
 HOW TO QUOTE:
 - LANGUAGE: follow the LANGUAGE RULE at the end of these instructions exactly. Never mix languages and never switch language on your own. Be warm, confident, human and brief (2-4 short sentences). For the intake you may ask several details at once as a short numbered list (one per line), otherwise ask at most two questions at a time.
 - Look carefully at every photo: count every item, judge the total volume, and notice heavy/dense material or anything that must be dismantled.
-- PROFESSIONAL INTAKE (like a real estimator, warm and human): BEFORE giving any price you must have: (1) what is being removed (photos or description), (2) the visitor's first name, (3) mobile number, (4) email (so we can send the itemized quote PDF; if they prefer not to give it, continue without it), (5) the pickup address, (6) stairs/access (flights without elevator, or ground level), (7) permission to call/text them about the quote.
+- PROFESSIONAL INTAKE (like a real estimator, warm and human): BEFORE giving any price you must have: (1) what is being removed (photos or description), (2) the visitor's first name, (3) mobile number, (4) EMAIL - always ask for it, it is very important: the itemized quote PDF, the booking confirmation and the service agreement are sent there (only if they clearly say they have none or prefer not, continue without it), (5) the pickup address, (6) stairs/access (flights without elevator, or ground level), (7) permission to call/text them about the quote.
 - When a photo arrives, first say in one short sentence what you see (e.g. "I can see a sofa, a mattress and about 6 bags"), then ask for the details you still need. Choose the most natural way: either one friendly message with a short numbered list of what you need (good when the visitor sent a photo and seems ready), or one or two questions at a time (good when the visitor is chatting casually). Never re-ask something already given, but always keep asking for anything still missing (stairs/access included). Never give a price before you have name, mobile and address. STAIRS/ACCESS: ask once; if the visitor does not answer, do NOT keep asking: deduce it yourself from the photos (visible stairs, balcony or upper-floor view, apartment hallway) and the address (apartment unit numbers like #2xx/#3xx usually mean 2nd/3rd floor), pass it as stairs with stairs_source 'photo' or 'address' (calculate_quote also checks the address on the map: building type, floors, unit number, and adds stairs automatically for upper-floor apartments without elevator; it returns this in 'building' and 'stairs_charged'), and mention it briefly (e.g. "I included 1 flight of stairs based on your photos"). Permission to contact must be an explicit yes from the visitor; if they skipped it, ask once more in a friendly way before booking.
 - Do NOT ask only for the city. Ask for the full pickup address and explain why, e.g. in English: "Pricing can vary by area. Where would the pickup be? With the address I can give you a more accurate quote." (in Spanish, the same idea: "El precio puede variar según la zona. ¿Dónde sería la recogida? Con la dirección te doy una cotización más precisa.") If they prefer not to share it, a ZIP code or cross streets is enough. Infer city (austin / near / other) and town from the address, and pass the address to calculate_quote.
 - Load sizes: single (one bulky item or up to ~3 small pieces), quarter (~1/4 truck), half, three_quarter, full (whole truck). More than one truck: "full" and loads = number of trucks. If between sizes, choose the larger.
@@ -432,6 +436,7 @@ async function runTool(name, args, state) {
   if (name === 'calculate_quote') {
     if (state.lockedQuote) { const q = state.lockedQuote; state.quotedNow = true; return { quote_id: q.id, price_including_estimated_dump_fee: money(q.price), locked: true, note: 'Price locked from the photo estimate. Use exactly this price.', lines: q.lines.map(l => `${l.label} (${l.detail}): ${l.amount}`) }; }
     const hasAreasAccess = state.project && state.project.areas && state.project.areas.some(x => x.stairs || x.access !== 'ground');
+    if (!state.prev && !emailOk(state)) return { error: 'No price yet: ask for the visitor\'s EMAIL first (we email the itemized quote PDF and the service agreement there). If they say they have none or prefer not to give it, continue without it.' };
     const hasPhotos = (state.photos && state.photos.length) || state.imgCount > 0;
     if (!state.prev && !clampInt(args.stairs, 0, 10) && !hasAreasAccess && !hasPhotos && !ACCESS_RE.test(userText(state))) return { error: 'No price yet: ask the visitor about stairs/access first (ground level, or how many flights of stairs without elevator). Then call calculate_quote again.' };
     const prev = state.prev, norm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -456,6 +461,7 @@ async function runTool(name, args, state) {
     q.walkthrough = !!((q.project && (q.total_cubic_yards > 32 || areas.length >= 4)) || q.loads > 2); if (!areas && args.area_name) q.areaName = txt(args.area_name, 40);
     state.quote = q; state.quotedNow = true;
     if (prev && prev.price && q.price !== prev.price) q.revised_from = prev.price;
+    if (prev && prev.price && q.price === prev.price) { state.sameQuote = true; q.id = prev.id || q.id; }       // same job re-calculated: don't show the card/slots again
     return { quote_id: q.id, price_including_estimated_dump_fee: money(q.price), lines: q.lines.map(l => `${l.label} (${l.detail}): ${l.amount}`), confirm_on_site: q.confirm_on_site, travel_to_confirm: q.travel_to_confirm, project: q.project ? { areas: areas.length, total_cubic_yards: q.total_cubic_yards, truck_loads: q.truck_loads } : undefined, walkthrough_required: q.walkthrough || undefined, building: acc, stairs_charged: clampInt(args.stairs, 0, 10), stairs_source: args.stairs_source || undefined, note: q.project ? 'ONE combined price for ALL areas/photos of this job (mileage included). Give only this total; never a separate price per photo.' : 'Mileage from the pickup address is already included. This is the ONE final price; do not quote again unless the visitor adds or changes items.' };
   }
   if (name === 'check_availability') {
@@ -464,9 +470,10 @@ async function runTool(name, args, state) {
   }
   const digits = String(args.phone || '').replace(/\D/g, '');
   if (name === 'book_appointment' || name === 'save_lead') {
-    if (args.consent !== true || !(state.lockedQuote || CONSENT_RE.test(userText(state)))) return { saved: false, error: 'The visitor has NOT explicitly said yes to being contacted. Ask one short friendly question: may we call or text them about this quote/appointment? Then call this tool again after they say yes.' };
+    if (args.consent !== true || !(state.lockedQuote || saidYes(state))) return { saved: false, error: 'The visitor has NOT explicitly said yes to being contacted. Ask one short friendly question: may we call or text them about this quote/appointment? Then call this tool again after they say yes.' };
     if (digits.length < 10 || txt(args.name, 60).length < 2) return { saved: false, error: 'Need a valid name and 10-digit mobile number.' };
   }
+  if (name === 'book_appointment' && !cleanEmail(args.email) && !(state.lead && state.lead.email) && !emailOk(state)) return { saved: false, error: 'Ask for the visitor\'s email first (the confirmation, quote PDF and service agreement are sent there). If they have none or prefer not, book without it.' };
   if (name === 'book_appointment') {
     const slots = state.slots || openSlots(), day = slots.find(s => s.date === String(args.date));
     const win = day && day.windows.find(w => w.replace(/\s/g, '').toLowerCase() === String(args.window || '').replace(/\s/g, '').toLowerCase());
@@ -746,6 +753,7 @@ exports.handler = async (event) => {
   if (pvq && !state.quote) state.quote = pvq;                         // the quote given earlier in this conversation (signed, cannot be altered)
   if (body.locked) { try { const lq = await lockedQuote(body.locked, lang); if (lq) { state.quote = lq; state.lockedQuote = lq; if (lq.address) state.address = lq.address; } } catch (e) { console.error('lock failed', e.message); } }
   const walkNote = state.quote && state.quote.walkthrough && !state.lockedQuote ? `\nWALKTHROUGH MODE: quote ${state.quote.id} (${money(state.quote.price)}) is a PRELIMINARY estimate for a large project. The appointment windows are for a FREE on-site walkthrough (20-30 min), not the pickup. Do NOT ask for a payment method. When the visitor picks a window and agrees, call book_appointment right away.` : '';
+  const ctxNote = state.quote && !state.lockedQuote ? `\nCONTEXT: you ALREADY gave this visitor quote ${state.quote.id} (${money(state.quote.price)}) earlier in this conversation. Do NOT restart, do NOT ask for photos again and do NOT recalculate unless they add or change items. Continue from where the conversation is (permission, email, time window, payment method, booking).` : '';
   const lockNote = state.lockedQuote ? `\nPRICE LOCKED: this visitor already received a photo estimate. The final price is ${money(state.lockedQuote.price)} (quote ${state.lockedQuote.id})${state.lockedQuote.mileage_added ? `, which now includes ${state.lockedQuote.mileage_added} mileage because the pickup is outside Austin - mention that briefly` : ''}. Do NOT call calculate_quote and never state any other price. Go straight to check_availability / booking.` : '';
   const left = () => DEADLINE - (Date.now() - t0);
   let usedModel = first, reply = '', noThink = true;
@@ -755,7 +763,7 @@ exports.handler = async (event) => {
     if (noThink) { const t = thinkingFor(m); if (t) gen.thinkingConfig = t; }
     try {
       return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', signal: ctl.signal, headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
-        body: JSON.stringify({ systemInstruction: { parts: [{ text: sys + lockNote + walkNote }] }, contents, tools: TOOLS, toolConfig: { functionCallingConfig: { mode: 'AUTO' } }, generationConfig: gen }) });
+        body: JSON.stringify({ systemInstruction: { parts: [{ text: sys + lockNote + walkNote + ctxNote }] }, contents, tools: TOOLS, toolConfig: { functionCallingConfig: { mode: 'AUTO' } }, generationConfig: gen }) });
     } finally { clearTimeout(timer); }
   };
   try {
@@ -782,7 +790,7 @@ exports.handler = async (event) => {
   }
   console.log('chat ms', Date.now() - t0, usedModel);
   let codeSlots = false;                                              // after a quote, always show open windows (even if the model forgot to check)
-  if (state.quotedNow && !state.slots && !(state.lead && state.lead.appointment) && left() > 1200) { try { const a = await availableSlots(); state.slots = a.slots; state.calendar = a.calendar; codeSlots = !!(a.slots && a.slots.length); } catch (e) {} }
+  if (state.quotedNow && !state.sameQuote && !state.slots && !(state.lead && state.lead.appointment) && left() > 1200) { try { const a = await availableSlots(); state.slots = a.slots; state.calendar = a.calendar; codeSlots = !!(a.slots && a.slots.length); } catch (e) {} }
   const lastU = [...(Array.isArray(body.messages) ? body.messages : [])].reverse().find(m => m && m.role === 'user'); state.lastUser = lastU ? txt(lastU.text, 200) : ''; const lastA = [...(Array.isArray(body.messages) ? body.messages : [])].reverse().find(m => m && m.role === 'assistant'); state.lastAssistant = lastA ? txt(lastA.text, 600) : '';
   const modelReply = guardPrices(txt(reply, 1200), state, es);
   reply = modelReply || codeReply(state, es);
@@ -796,8 +804,8 @@ exports.handler = async (event) => {
   }
   const alreadyEmailed = !!body.leadSent && state.lead && !state.lead.appointment;                     // one quote email per conversation
   const forwarded = state.lead && !alreadyEmailed && Date.now() - t0 < 6500 ? await forwardLead(state.lead, state.quote, body) : alreadyEmailed;
-  const slotsOut = state.slots && state.slots.length && !(state.lead && state.lead.appointment) && (state.quotedNow || state.slotRetry) ? state.slots.slice(0, 3).map(s => ({ date: s.date, day: s.day, windows: s.windows.slice(0, 3) })) : null;
-  return resp(200, { ok: true, reply, slots: slotsOut, project: state.project && state.project.areas.length ? state.project : null, quote: state.quotedNow ? (quoteFor(state.quote, lang) || null) : null, qraw: state.quotedNow && state.quote ? signQuote(state.quote) : null, lead: state.lead ? { name: state.lead.name, phone: state.lead.phone, summary: state.lead.summary } : null, appointment: (state.lead && state.lead.appointment) || null, forwarded });
+  const slotsOut = state.slots && state.slots.length && !(state.lead && state.lead.appointment) && ((state.quotedNow && !state.sameQuote) || state.slotRetry) ? state.slots.slice(0, 3).map(s => ({ date: s.date, day: s.day, windows: s.windows.slice(0, 3) })) : null;
+  return resp(200, { ok: true, reply, slots: slotsOut, project: state.project && state.project.areas.length ? state.project : null, quote: state.quotedNow && !state.sameQuote ? (quoteFor(state.quote, lang) || null) : null, qraw: state.quotedNow && state.quote ? signQuote(state.quote) : null, lead: state.lead ? { name: state.lead.name, phone: state.lead.phone, summary: state.lead.summary } : null, appointment: (state.lead && state.lead.appointment) || null, forwarded });
 };
 exports._computeQuote = computeQuote; exports._openSlots = openSlots; exports._runTool = runTool; exports._localIso = localIso; exports._pdfData = pdfData;
 exports._buildQuotePdf = buildQuotePdf;
