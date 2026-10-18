@@ -349,6 +349,7 @@ HOW TO QUOTE:
 - Count paint cans, mattresses, box springs and sofas/couches/recliners separately (paint, mattress, box_spring, sofa: the landfill charges per piece). Fridges/freezers/AC always go in fridge (Freon removal). Pass town (and miles if you can estimate them) so mileage is charged.
 - When calling book_appointment, fill crew_notes with an internal crew manifest (tools, PPE, access, donation candidates). Never show crew notes to the customer.
 - Always estimate the total weight (est_weight_lbs) from what you see; the dump fee is calculated from that weight. When unsure, estimate higher so EcoWise does not lose money.
+- SPEED: whenever possible call several tools in ONE step, in this order: add_area (each area), calculate_quote, save_lead, check_availability. Then write your message.
 - When you have all the intake details, in the SAME turn call calculate_quote AND save_lead (name, mobile, a summary with the items and the quote id, consent true). Then continue with check_availability as described below.
 - Call calculate_quote ONLY ONCE per job, after you have the pickup address (mileage is calculated from the address inside that call, so the first price is already the final one). Never give a price before that and never give a second price, unless the visitor adds or changes items.
 - When you have enough information call calculate_quote. NEVER state a price, fee or total that did not come from calculate_quote. Give the ONE price from calculate_quote (never a range). Explain simply: it already includes an estimated dump/disposal fee (the final dump fee is adjusted to the actual landfill ticket), and the exact price is confirmed in writing before loading. If confirm_on_site is true, say the crew confirms dense material/demolition on site.
@@ -468,10 +469,19 @@ function codeReply(state, es) {
   if (a) return a.confirmed
     ? (es ? `¡Listo, ${L.name}! Quedaste agendado el ${a.day}, ${a.window}, en ${a.address}. Te enviaremos un mensaje de recordatorio.` : `You're booked, ${L.name}! ${a.day}, ${a.window}, at ${a.address}. We'll text you a reminder.`)
     : (es ? `Gracias, ${L.name}. Recibimos tu solicitud para el ${a.day}, ${a.window}. Te escribiremos para confirmar.` : `Thanks, ${L.name}. We got your request for ${a.day}, ${a.window}. We'll text you to confirm.`);
+  const nm = L && L.name ? ' ' + String(L.name).split(' ')[0] : '', walk = q && q.walkthrough;
+  const picked = /^(i'?ll take|quiero el)\b/i.test(String(state.lastUser || '').trim());
+  if (picked && q && !a) return walk
+    ? (es ? `¡Perfecto${nm}! ¿Confirmo tu visita GRATIS en ese horario? Responde "sí" y la agendo.` : `Perfect${nm}! Shall I confirm your FREE visit for that time? Reply "yes" and I'll book it.`)
+    : (es ? `¡Excelente elección${nm}! ¿Qué forma de pago prefieres: efectivo, tarjeta, Zelle o Venmo? Alguien de EcoWise te enviará por correo o SMS el contrato de servicio para firmar y ahí agregas tu forma de pago. No se cobra nada hasta terminar la recogida.`
+          : `Great choice${nm}! Which payment method do you prefer: cash, card, Zelle or Venmo? Someone from EcoWise will send you the service agreement by email or text to sign and add your payment method. Nothing is charged until the pickup is finished.`);
   if (state.slots && state.slots.length) {
     const opts = state.slots.slice(0, 3).map(s => `${s.day}: ${s.windows.slice(0, 3).join(', ')}`).join(' · ');
-    const pr = q ? (es ? `Tu precio es de ${money(q.price)}, incluyendo la tarifa estimada del botadero; se confirma por escrito antes de cargar. ` : `Your price is ${money(q.price)}, including the estimated dump fee; it is confirmed in writing before we load. `) : '';
-    return pr + (es ? `Tenemos estos horarios: ${opts}. ¿Cuál te queda mejor?` : `We have these openings: ${opts}. Which works best for you?`);
+    const what = q && q.project ? (es ? ` para las ${q.lines.filter(l => l.key === 'area').length} áreas (~${q.total_cubic_yards} yd³)` : ` for all ${q.lines.filter(l => l.key === 'area').length} areas (~${q.total_cubic_yards} cu yd)`) : '';
+    const pr = !q ? '' : walk
+      ? (es ? `Gracias${nm}. Tu estimado preliminar${what} es de ${money(q.price)}. Por el tamaño del proyecto, un miembro de EcoWise irá a verlo en persona (visita GRATIS de 20-30 min) para confirmar el precio final, y luego agendamos la recogida. ` : `Thanks${nm}. Your preliminary estimate${what} is ${money(q.price)}. For a project this size, an EcoWise team member will come see it in person (FREE 20-30 min visit) to confirm the final price, and then we schedule the pickup. `)
+      : (es ? `Gracias${nm}. Tu precio${what} es de ${money(q.price)}: incluye mano de obra, carga, traslado y la tarifa estimada del botadero (se ajusta al ticket), y se confirma por escrito antes de cargar. ` : `Thanks${nm}. Your total${what} is ${money(q.price)}: it covers labor, loading, travel and the estimated dump fee (adjusted to the landfill ticket), confirmed in writing before we load. `);
+    return pr + (walk ? (es ? `Horarios para la visita gratis: ${opts}. ¿Cuál te queda mejor?` : `Times for the free visit: ${opts}. Which works best for you?`) : (es ? `Tenemos estos horarios: ${opts}. ¿Cuál te queda mejor?` : `We have these openings: ${opts}. Which works best for you?`));
   }
   if (L) return es ? `Gracias, ${L.name}. Un miembro de EcoWise te contactará pronto.` : `Thanks, ${L.name}. Someone from EcoWise will reach out soon.`;
   if (q) return es ? `Tu precio es de ${money(q.price)}, incluyendo la tarifa de descarga estimada. El precio exacto se confirma por escrito antes de cargar. ¿Quieres agendar?`
@@ -692,6 +702,7 @@ exports.handler = async (event) => {
   const state = { photos, lang, project, prev: pv ? { id: txt(pv.id, 40), price: clampNum(pv.price, 0, 100000), miles: pv.miles == null ? null : clampNum(pv.miles, 0, 300), address: txt(pv.address, 160) } : null }, t0 = Date.now(), DEADLINE = 8300, sys = systemPrompt() + `\nLANGUAGE RULE: The visitor's device/system language is ${uiLang === 'es' ? 'Spanish' : 'English'}. Their latest message is in ${LN}. Write your ENTIRE reply in ${LN} only. Do not use the other language, not even a greeting.`;
   if (pvq && !state.quote) state.quote = pvq;                         // the quote given earlier in this conversation (signed, cannot be altered)
   if (body.locked) { try { const lq = await lockedQuote(body.locked, lang); if (lq) { state.quote = lq; state.lockedQuote = lq; if (lq.address) state.address = lq.address; } } catch (e) { console.error('lock failed', e.message); } }
+  const walkNote = state.quote && state.quote.walkthrough && !state.lockedQuote ? `\nWALKTHROUGH MODE: quote ${state.quote.id} (${money(state.quote.price)}) is a PRELIMINARY estimate for a large project. The appointment windows are for a FREE on-site walkthrough (20-30 min), not the pickup. Do NOT ask for a payment method. When the visitor picks a window and agrees, call book_appointment right away.` : '';
   const lockNote = state.lockedQuote ? `\nPRICE LOCKED: this visitor already received a photo estimate. The final price is ${money(state.lockedQuote.price)} (quote ${state.lockedQuote.id})${state.lockedQuote.mileage_added ? `, which now includes ${state.lockedQuote.mileage_added} mileage because the pickup is outside Austin - mention that briefly` : ''}. Do NOT call calculate_quote and never state any other price. Go straight to check_availability / booking.` : '';
   const left = () => DEADLINE - (Date.now() - t0);
   let usedModel = first, reply = '', noThink = true;
@@ -701,7 +712,7 @@ exports.handler = async (event) => {
     if (noThink) { const t = thinkingFor(m); if (t) gen.thinkingConfig = t; }
     try {
       return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', signal: ctl.signal, headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
-        body: JSON.stringify({ systemInstruction: { parts: [{ text: sys + lockNote }] }, contents, tools: TOOLS, toolConfig: { functionCallingConfig: { mode: 'AUTO' } }, generationConfig: gen }) });
+        body: JSON.stringify({ systemInstruction: { parts: [{ text: sys + lockNote + walkNote }] }, contents, tools: TOOLS, toolConfig: { functionCallingConfig: { mode: 'AUTO' } }, generationConfig: gen }) });
     } finally { clearTimeout(timer); }
   };
   try {
@@ -729,9 +740,13 @@ exports.handler = async (event) => {
   console.log('chat ms', Date.now() - t0, usedModel);
   let codeSlots = false;                                              // after a quote, always show open windows (even if the model forgot to check)
   if (state.quotedNow && !state.slots && !(state.lead && state.lead.appointment) && left() > 1200) { try { const a = await availableSlots(); state.slots = a.slots; state.calendar = a.calendar; codeSlots = !!(a.slots && a.slots.length); } catch (e) {} }
-  reply = guardPrices(txt(reply, 1200), state, es) || codeReply(state, es);
+  const lastU = [...(Array.isArray(body.messages) ? body.messages : [])].reverse().find(m => m && m.role === 'user'); state.lastUser = lastU ? txt(lastU.text, 200) : '';
+  const modelReply = guardPrices(txt(reply, 1200), state, es);
+  reply = modelReply || codeReply(state, es);
   reply = reply.replace(/\*\*|__/g, '');
-  if (codeSlots && reply) {
+  if (modelReply && state.quotedNow && state.quote && state.quote.walkthrough && !/walkthrough|visit|visita|in person|en persona/i.test(reply))
+    reply += es ? '\n\nComo es un proyecto grande, este es un estimado preliminar: un miembro de EcoWise irá a verlo en persona (visita GRATIS de 20-30 min) para confirmar el precio final. Los horarios son para esa visita.' : '\n\nSince this is a large project, this is a preliminary estimate: an EcoWise team member will come see it in person (FREE 20-30 min visit) to confirm the final price. The times below are for that visit.';
+  if (codeSlots && modelReply) {
     reply = reply.split(/(?<=[.!?])\s+/).filter(x => !/would you like|want me to|shall i|can check|i can (also )?check|te gustar|quieres (que )?(agend|program|revis)|puedo revisar|deseas agendar/i.test(x)).join(' ');
     const opts = state.slots.slice(0, 3).map(s => `${s.day} (${s.windows.slice(0, 2).join(' or ')})`).join(', ');
     reply += es ? `\n\nTenemos disponible: ${opts}. ¿Cuál horario prefieres?` : `\n\nOur next openings: ${opts}. Which one works best for you?`;
