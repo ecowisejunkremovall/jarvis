@@ -712,7 +712,7 @@ window.addEventListener('load',function(){setTimeout(ga,7000);if('serviceWorker'
       var root=document.getElementById('estimator');if(!root)return;
       /* ===== EDIT THESE NUMBERS to match your real pricing ===== */
       var CFG={crew:2,rate:50,fuelAustin:25,stairs:25,
-        sizes:{single:{base:79,f:.12,hrs:[.5,1]},quarter:{base:149,f:.25,hrs:[1,1.5]},
+        sizes:{single:{base:39,f:.12,hrs:[.25,.5]},quarter:{base:149,f:.25,hrs:[1,1.5]},
                half:{base:232,f:.5,hrs:[1.5,2]},             /* interpolated between 1/4 and full \u2014 set your own */
                three_quarter:{base:316,f:.75,hrs:[2,2.5]},   /* interpolated \u2014 set your own */
                full:{base:399,f:1,hrs:[2,3]}},
@@ -782,7 +782,7 @@ window.addEventListener('load',function(){setTimeout(ga,7000);if('serviceWorker'
         else{L.push([t('fuel'),t('outAus'),t('tbd')]);trav=t('travelOut');}
         ['fridge','mattress','box_spring','sofa','washer_dryer','paint','tv','tire','tire_rim'].forEach(function(k){if(!(k in CFG.items))return;var q=+((res.special||{})[k])||0;if(q){var a=q*CFG.items[k];lo+=a;hi+=a;sum.push(q+' '+t(k));L.push([t('it_'+k),q+' \u00d7 $'+CFG.items[k],money(a)]);}});
         if(fl){var a2=fl*CFG.stairs;lo+=a2;hi+=a2;L.push([t('stairsL'),fl+' \u00d7 $'+CFG.stairs,money(a2)]);}
-        var df=(CFG.dump||{})[res.size];if(df){var ld=Math.max(1,+res.loads||1),dl=df[0]*ld,dh=df[1]*ld,R=CFG.dr,w=Math.max(+res.est_weight_lbs||0,Math.round(({single:2,quarter:4,half:8,three_quarter:12,full:16}[res.size]||4)*ld*0.75*150));if(R&&w>0){var k=(R.weight_range_pct||20)/100,rt=(res.heavy_material?R.heavy_per_ton:R.per_ton)||60,mg=1+(R.safety_pct||0)/100,mn=R.minimum||45,ef=R.env_fee||[16,30];dl=Math.max(dl,r5((Math.max(mn,w*(1-k)/2000*rt)+ef[0])*mg));dh=Math.max(dh,r5((Math.max(mn,w*(1+k)/2000*rt)+ef[1])*mg));}var dv=Math.round(dl+(dh-dl)*PP);lo+=dv;hi+=dv;L.push([t('dump'),(w>0?'~'+Math.round(w).toLocaleString('en-US')+' lb \u00b7 ':'')+t('byWeight'),money(dv)]);}else L.push([t('dump'),t('byWeight'),t('atCost')]);
+        var df=(CFG.dump||{})[res.size];if(df){var ld=Math.max(1,+res.loads||1),dl=df[0]*ld,dh=df[1]*ld,R=CFG.dr,w=Math.max(+res.est_weight_lbs||0,Math.round(({single:2,quarter:4,half:8,three_quarter:12,full:16}[res.size]||4)*ld*0.75*150));if(R&&w>0&&!(res.size==='single'&&!res.heavy_material&&w<=400)){var k=(R.weight_range_pct||20)/100,rt=(res.heavy_material?R.heavy_per_ton:R.per_ton)||60,mg=1+(R.safety_pct||0)/100,mn=R.minimum||45,ef=R.env_fee||[16,30];dl=Math.max(dl,r5((Math.max(mn,w*(1-k)/2000*rt)+ef[0])*mg));dh=Math.max(dh,r5((Math.max(mn,w*(1+k)/2000*rt)+ef[1])*mg));}var dv=Math.round(dl+(dh-dl)*PP);lo+=dv;hi+=dv;L.push([t('dump'),(w>0?'~'+Math.round(w).toLocaleString('en-US')+' lb \u00b7 ':'')+t('byWeight'),money(dv)]);}else L.push([t('dump'),t('byWeight'),t('atCost')]);
         var pr=Math.ceil(lo/5)*5;
         return{lines:L,lo:pr,hi:pr,custom:custom,sum:sum,trav:trav};
       }
@@ -2537,6 +2537,7 @@ html{scroll-behavior:smooth}
 #ecoChat header button{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:background .2s,transform .2s}
 #ecoChat header button:hover{background:rgba(255,255,255,.08);transform:rotate(90deg)}
 #ecLog{padding:16px 14px;gap:10px;scroll-behavior:smooth;scrollbar-width:thin;scrollbar-color:#2b4a37 transparent}
+.ec-sign{display:block;text-align:center;background:linear-gradient(135deg,#d9935a,#b5723a);color:#fff!important;font:800 15px/1.2 system-ui,sans-serif;padding:14px 16px;border-radius:14px;text-decoration:none;box-shadow:0 8px 22px rgba(181,114,58,.4);margin:2px 0}.ec-sign:hover{filter:brightness(1.08)}
 #ecLog::-webkit-scrollbar{width:6px}#ecLog::-webkit-scrollbar-thumb{background:#2b4a37;border-radius:6px}
 .ec-m{padding:10px 14px;line-height:1.5;font-size:14px;animation:ecIn .32s cubic-bezier(.2,.9,.3,1.1) both}
 @keyframes ecIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
@@ -2644,6 +2645,7 @@ html{scroll-behavior:smooth}
   function el(t,c,s){var e=document.createElement(t);if(c)e.className=c;if(s!=null)e.textContent=s;return e}
   function down(){log.scrollTop=log.scrollHeight}
   function add(role,text){var m=el('div','ec-m '+(role==='user'?'ec-u':role==='note'?'ec-n':'ec-a'),text);log.appendChild(m);down();return m}
+  function signBtn(url){if(!/^https:\/\/ecowisejunkremovall\.base44\.app\/agreement\?/.test(url))return;var a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener';a.className='ec-sign';a.textContent=es?'✍️ Firmar y agregar método de pago (1 min)':'✍️ Sign & add payment method (1 min)';log.appendChild(a);log.appendChild(el('div','ec-m ec-n',es?'No se cobra nada hasta terminar el trabajo.':'Nothing is charged until the job is done.'));down()}
   function addCall(){var a=el('a','ec-m ec-a',T.call);a.href='tel:+15123692644';a.style.color='#d9b078';log.appendChild(a);down()}
   function typing(on){var d=$('ecDots');if(on&&!d){d=el('div','ec-dots');d.id='ecDots';d.appendChild(el('i'));d.appendChild(el('i'));d.appendChild(el('i'));log.appendChild(d);down()}else if(!on&&d)d.remove()}
   function card(q){var c=el('div','ec-q'),S=es?{load:'Carga y mano de obra',disposal:'Botadero / disposición (TDS)',travel:'Traslado',tot:'Total estimado',q:'Cotización',foot:'Estimado basado en las fotos y la descripción. La tarifa del botadero se ajusta al ticket de báscula. Precio final confirmado por escrito antes de cargar.',os:'El equipo confirma material pesado / demolición en sitio.'}:{load:'Load & labor',disposal:'Landfill disposal (TDS)',travel:'Travel',tot:'Estimated total',q:'Quote',foot:'Estimate based on photos and description. Landfill fee is adjusted to the scale ticket. Final price confirmed in writing before loading.',os:'Crew confirms heavy material / demolition on site.'};
@@ -2685,7 +2687,7 @@ html{scroll-behavior:smooth}
         try{r=await fetch(FN,{method:'POST',headers:{'Content-Type':'application/json'},body:payload});d={};try{d=await r.json()}catch(e){}ok=!!(r.ok&&d.ok)}catch(e){r=null;d={}}
       }
       typing(false);
-      if(ok){var rp=String(d.reply||'').replace(/\*\*|__/g,'');if(d.project)project=d.project;if(d.qraw)lastQ=d.qraw;if(d.quote){card(d.quote)}add('assistant',rp);msgs.push({role:'assistant',text:rp});if(d.slots&&d.slots.length&&!d.appointment)slotPick(d.slots);if(d.lead&&!leadSent){leadSent=true;sendLead(d.lead,!d.forwarded);if(!(d.slots&&d.slots.length)&&!d.appointment)add('note',T.saved)}}
+      if(ok){var rp=String(d.reply||'').replace(/\*\*|__/g,'');if(d.project)project=d.project;if(d.qraw)lastQ=d.qraw;if(d.quote){card(d.quote)}add('assistant',rp);msgs.push({role:'assistant',text:rp});if(d.slots&&d.slots.length&&!d.appointment)slotPick(d.slots);if(d.agreement)signBtn(d.agreement);if(d.lead&&!leadSent){leadSent=true;sendLead(d.lead,!d.forwarded);if(!(d.slots&&d.slots.length)&&!d.appointment)add('note',T.saved)}}
       else smooth(blobs);
     }catch(e){console.error('chat error',e);typing(false);smooth(blobs)}
     busy=false;

@@ -6,10 +6,10 @@
   "stairs": 25,
   "sizes": {
     "single": {
-      "base": 79,
+      "base": 39,
       "hrs": [
-        0.5,
-        1
+        0.25,
+        0.5
       ]
     },
     "quarter": {
@@ -138,8 +138,8 @@
   "dump_fee": {
     "_comment": "MINIMUM dump fee per load size (floor). A full trip to TDS costs at least (2 tons x $61 + $30) x 1.25 = ~$190.",
     "single": [
-      50,
-      50
+      30,
+      30
     ],
     "quarter": [
       70,
@@ -207,5 +207,6 @@
     ],
     "min_hours_notice": 12,
     "days_ahead": 10
-  }
+  },
+  "_single_note": "Single item all-in ≈ $129–149 (truck $39 + labor ~$38 + disposal $30 + fuel $25). Competitive with national chains (~$125 avg sofa)."
 }
