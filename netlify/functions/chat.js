@@ -200,7 +200,8 @@ function computeQuote(a) {
   // 2. Disposal (landfill)
   const volYd = a._yards ? clampNum(a._yards, 0, 400) : ({ single: 2, quarter: 4, half: 8, three_quarter: 12, full: 16 }[size] || 4) * loads * 0.75;   // realistic volume
   const lbs = Math.max(clampNum(a.est_weight_lbs, 0, 40000), Math.round(volYd * 150)), heavy = !!(a.heavy_material || clampNum(a.dense_cubic_yards, 0, 40));
-  const d = dumpFee(size, loads, lbs, heavy);
+  // single items: flat disposal (no per-load landfill minimum) so a couch is priced like the big chains
+  const d = size === 'single' && !heavy && lbs <= 400 ? { low: (DUMP.single || [30, 30])[0] * loads, high: (DUMP.single || [30, 30])[1] * loads, tons: null } : dumpFee(size, loads, lbs, heavy);
   const tonsTxt = d.tons ? `~${Math.round(lbs).toLocaleString('en-US')} lb${heavy ? ', heavy/C&D' : ''}` : 'By weight';
   add('disposal', 'Landfill tipping fee (TDS)', tonsTxt + ' - adjusted to scale ticket', d.low, d.high);
   const yd = clampNum(a.dense_cubic_yards, 0, 40);
@@ -400,7 +401,7 @@ HOW TO BOOK:
 - If the visitor arrives with a PHOTO ESTIMATE summary (size, items, total, address, stairs, name, mobile and consent), the intake is ALREADY COMPLETE: do not ask anything again. Thank them by first name, call calculate_quote (the price stays locked), save_lead and check_availability in the same turn, and offer the open windows (the email and payment method are asked when they pick a window). Only if the pickup address is missing, ask just for the address.
 - ORDER OF A QUOTE ANSWER: right after calculate_quote, in the SAME turn ALSO call check_availability (do not wait for the visitor to say yes). The itemized quote card is shown to the visitor ABOVE your message, so do not list the line items again. Then write ONE short message: (1) the single price and, in one sentence, that it covers labor, loading, travel and the estimated dump fee (adjusted to the landfill ticket) and is confirmed in writing before loading; (2) the next 2-3 open windows (day + window) from check_availability; (3) ask which one they prefer. Plain text only, no markdown, no asterisks.
 - PAYMENT: when they pick a window, ask which payment method they prefer (cash, card, Zelle or Venmo) and explain kindly, in 2-3 short sentences: someone from EcoWise will contact them by email or text (through our EcoWise Pro Manager app) to send the service agreement to sign; once it is signed, the app asks them to add their payment method. Nothing is charged until the pickup is finished. If the payment method doesn't go through, we let them know so they can replace it; otherwise the items are unloaded. If the email is still missing, ask for it in the same message. Then call book_appointment (with payment_method and email) without asking anything else.
-- After booking, confirm warmly: day and window, address, preferred payment method, that the quote/confirmation was emailed (if quote_emailed_to is set), and that they will soon receive the service agreement by email or text to sign and add their payment method.
+- After booking, confirm warmly: day and window, address, preferred payment method, that the quote/confirmation was emailed (if quote_emailed_to is set), and that they can sign the service agreement and add their payment method RIGHT NOW with the button that appears below this message (takes 1 minute; nothing is charged until the job is done) — or later from the link we text them.
 - After book_appointment: if confirmed is true, tell them they are booked for that day and window and the team will text a reminder. If confirmed is false, say it is a REQUEST and the team will text to confirm. If a window was just taken, apologize and offer other open windows.
 - Only offer windows returned by check_availability; never invent times.
 - If they don't want to book yet, tell them their quote is saved and the team can follow up by text; they can also call or text (512) 369-2644.
@@ -436,6 +437,7 @@ async function pushToBase44(lead, quote, body) {
   const r = await b44Call({ first: !body.leadSent, quote: q,
     lead: { name: lead.name, phone: lead.phone, email: lead.email || '', address: lead.address || '', lang: lead.lang || 'en', summary: lead.summary || '',
       payLabel: payLabel(lead.pay, 'en') || '', appointment: lead.appointment || null } });
+  if (r && r.ok && r.created && r.created.agreement_url) return r.created.agreement_url;   // booking → link for the "Sign now" button
   return !!(r && r.ok);
 }
 
@@ -833,9 +835,9 @@ exports.handler = async (event) => {
   }
   const alreadyEmailed = !!body.leadSent && state.lead && !state.lead.appointment;                     // one quote email per conversation
   const sendNow = state.lead && !alreadyEmailed && Date.now() - t0 < 6500;
-  const [forwarded] = sendNow ? await Promise.all([forwardLead(state.lead, state.quote, body), pushToBase44(state.lead, state.quote, body).catch(() => false)]) : [alreadyEmailed];
+  const [forwarded, b44] = sendNow ? await Promise.all([forwardLead(state.lead, state.quote, body), pushToBase44(state.lead, state.quote, body).catch(() => false)]) : [alreadyEmailed];
   const slotsOut = state.slots && state.slots.length && !(state.lead && state.lead.appointment) && ((state.quotedNow && !state.sameQuote) || state.slotRetry) ? state.slots.slice(0, 3).map(s => ({ date: s.date, day: s.day, windows: s.windows.slice(0, 3) })) : null;
-  return resp(200, { ok: true, reply, slots: slotsOut, project: state.project && state.project.areas.length ? state.project : null, quote: state.quotedNow && !state.sameQuote ? (quoteFor(state.quote, lang) || null) : null, qraw: state.quotedNow && state.quote ? signQuote(state.quote) : null, lead: state.lead ? { name: state.lead.name, phone: state.lead.phone, summary: state.lead.summary } : null, appointment: (state.lead && state.lead.appointment) || null, forwarded });
+  return resp(200, { ok: true, reply, slots: slotsOut, project: state.project && state.project.areas.length ? state.project : null, quote: state.quotedNow && !state.sameQuote ? (quoteFor(state.quote, lang) || null) : null, qraw: state.quotedNow && state.quote ? signQuote(state.quote) : null, lead: state.lead ? { name: state.lead.name, phone: state.lead.phone, summary: state.lead.summary } : null, appointment: (state.lead && state.lead.appointment) || null, agreement: (state.lead && state.lead.appointment && typeof b44 === 'string' && b44) || null, forwarded });
 };
 exports._computeQuote = computeQuote; exports._openSlots = openSlots; exports._runTool = runTool; exports._localIso = localIso; exports._pdfData = pdfData;
 exports._buildQuotePdf = buildQuotePdf; exports._pushToBase44 = pushToBase44;
