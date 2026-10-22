@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+<style>.wv{transform-origin:44px 150px;animation:wv 2s ease-in-out infinite}@keyframes wv{0%,100%{transform:rotate(0)}50%{transform:rotate(14deg)}}.bl{animation:bl 4.5s infinite}@keyframes bl{0%,94%,100%{transform:scaleY(1)}97%{transform:scaleY(.1)}}.ey{transform-box:fill-box;transform-origin:center}.sun{animation:sn 6s ease-in-out infinite}@keyframes sn{50%{transform:translateY(4px)}}</style>
+<defs><linearGradient id="sk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6c77a"/><stop offset=".6" stop-color="#cfe3b0"/></linearGradient></defs>
+<clipPath id="c"><circle cx="100" cy="100" r="100"/></clipPath>
+<g clip-path="url(#c)">
+<rect width="200" height="200" fill="url(#sk)"/>
+<circle class="sun" cx="150" cy="40" r="16" fill="#fff3c4"/>
+<path d="M0 120l40-40 30 26 40-50 50 52 40-30v122H0z" fill="#6f8f5a"/>
+<path d="M0 140l50-30 40 20 50-34 60 34v70H0z" fill="#4c6b3d"/>
+<path d="M60 200c10-30 40-40 70-60" stroke="#c9a46a" stroke-width="10" fill="none" stroke-linecap="round"/>
+<path d="M40 200c4-36 28-54 60-54s56 18 60 54z" fill="#3f7d4e"/>
+<path d="M76 152l24 30 24-30" fill="#e7d6a8"/>
+<rect x="89" y="130" width="22" height="20" rx="6" fill="#b97d58"/>
+<ellipse cx="100" cy="104" rx="36" ry="40" fill="#cf8f68"/>
+<path d="M84 124q16 10 32 0" stroke="#fff" stroke-width="5" stroke-linecap="round" fill="none"/>
+<g class="bl"><ellipse class="ey" cx="87" cy="102" rx="5" ry="6" fill="#21170f"/><ellipse class="ey" cx="113" cy="102" rx="5" ry="6" fill="#21170f"/></g>
+<circle cx="78" cy="114" r="5" fill="#e88a6a" opacity=".5"/><circle cx="122" cy="114" r="5" fill="#e88a6a" opacity=".5"/>
+<path d="M62 92c0-30 18-44 38-44s38 14 38 44c-10-8-24-12-38-12s-28 4-38 12z" fill="#5a3a22"/>
+<path d="M58 84c4-28 22-40 42-40s38 12 42 40z" fill="#2f6b46"/><rect x="52" y="80" width="96" height="9" rx="4.5" fill="#24563a"/>
+<path d="M70 66l12-12 10 8 10-14 14 18" stroke="#cfe3b0" stroke-width="4" fill="none" stroke-linejoin="round"/>
+<g class="wv"><path d="M44 150l-6-46" stroke="#cf8f68" stroke-width="12" stroke-linecap="round"/><circle cx="37" cy="100" r="9" fill="#cf8f68"/></g>
+<g transform="rotate(-18 160 150)"><rect x="156" y="96" width="7" height="104" rx="3" fill="#8a5a2b"/><path d="M146 92h28l-4 12h-20z" fill="#7d8a94"/></g>
+</g>
+<circle cx="100" cy="100" r="98" fill="none" stroke="#5fbf6b" stroke-width="4"/>
+</svg>

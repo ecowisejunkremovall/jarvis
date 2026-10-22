@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+<style>.hm{transform-origin:150px 128px;animation:hm 1.6s ease-in-out infinite}@keyframes hm{0%,60%,100%{transform:rotate(0)}30%{transform:rotate(-28deg)}}.bl{animation:bl 4s infinite}@keyframes bl{0%,94%,100%{transform:scaleY(1)}97%{transform:scaleY(.1)}}.ey{transform-box:fill-box;transform-origin:center}</style>
+<defs><radialGradient id="bg" cx=".5" cy=".4" r=".7"><stop offset="0" stop-color="#2b5a86"/><stop offset="1" stop-color="#0f2236"/></radialGradient></defs><clipPath id="c"><circle cx="100" cy="100" r="100"/></clipPath><g clip-path="url(#c)">
+<circle cx="100" cy="100" r="100" fill="url(#bg)"/>
+<g stroke="#4f7fae" stroke-width="1" opacity=".55"><path d="M0 40h200M0 80h200M0 120h200M0 160h200M40 0v200M80 0v200M120 0v200M160 0v200"/></g>
+<g fill="none" stroke="#9cc3e8" stroke-width="1.6" opacity=".6"><path d="M18 150h40v-30h30"/><path d="M140 30h40v40"/></g>
+<path d="M38 200c4-38 28-56 62-56s58 18 62 56z" fill="#e8913a"/>
+<path d="M70 150l30 50 30-50" fill="#2a3b4c"/><path d="M58 158l14 42M142 158l-14 42" stroke="#f6e27a" stroke-width="7"/>
+<rect x="88" y="128" width="24" height="22" rx="6" fill="#c98b6b"/>
+<ellipse cx="100" cy="100" rx="38" ry="42" fill="#e0a481"/>
+<path d="M64 108c2 26 18 40 36 40s34-14 36-40c-6 10-14 14-36 14s-30-4-36-14z" fill="#6b4630"/>
+<path d="M84 124q16 10 32 0" stroke="#fff" stroke-width="5" stroke-linecap="round" fill="none"/>
+<g class="bl"><ellipse class="ey" cx="86" cy="98" rx="5" ry="6" fill="#2a1d14"/><ellipse class="ey" cx="114" cy="98" rx="5" ry="6" fill="#2a1d14"/></g>
+<path d="M78 86q8-6 16 0M106 86q8-6 16 0" stroke="#6b4630" stroke-width="4" stroke-linecap="round" fill="none"/>
+<ellipse cx="62" cy="102" rx="6" ry="9" fill="#d69675"/><ellipse cx="138" cy="102" rx="6" ry="9" fill="#d69675"/>
+<path d="M56 80c0-30 20-46 44-46s44 16 44 46z" fill="#f2b13a"/><rect x="48" y="76" width="104" height="10" rx="5" fill="#e09a20"/>
+<path d="M100 36v40" stroke="#ffd36e" stroke-width="8"/><text x="100" y="66" font-family="Arial Black,Arial" font-size="11" fill="#7a4a0a" text-anchor="middle" font-weight="900">ECO</text>
+<g class="hm"><rect x="146" y="120" width="8" height="54" rx="3" fill="#7a4a24" transform="rotate(20 150 147)"/><rect x="134" y="110" width="34" height="14" rx="3" fill="#9aa7b3" transform="rotate(20 150 117)"/></g>
+</g><circle cx="100" cy="100" r="98" fill="none" stroke="#c98446" stroke-width="4"/></svg>
