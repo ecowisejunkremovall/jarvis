@@ -258,9 +258,9 @@
 
   /* ───────── SIGN-UP (bins, pet waste) ───────── */
   var RS = {
-    bins: { name: 'EcoWise Bin Solutions', short: 'Bin cleaning', logo: '/branding/bins-192.webp', unit: 'bins', inc: 2,
+    bins: { name: 'EcoWise Bin Solutions', short: 'Bin cleaning', logo: '/branding/bins-192.webp?v=6', unit: 'bins', inc: 2,
       plans: [{ k: 'monthly', l: 'Monthly', p: 29, x: 8, n: 'Most popular — every 4 weeks on your trash day' }, { k: 'bimonthly', l: 'Every 2 months', p: 35, x: 10 }, { k: 'quarterly', l: 'Every 3 months', p: 45, x: 10 }, { k: 'onetime', l: 'One-time clean', p: 55, x: 15, one: true }] },
-    petwaste: { name: 'EcoWise Pet Waste', short: 'Pet waste', logo: '/branding/petwaste-192.webp', unit: 'dogs', inc: 1,
+    petwaste: { name: 'EcoWise Pet Waste', short: 'Pet waste', logo: '/branding/petwaste-192.webp?v=6', unit: 'dogs', inc: 1,
       plans: [{ k: 'weekly', l: 'Weekly', p: 17, t: 20, x: 3, n: 'Most popular — disinfectant included' }, { k: 'twice_weekly', l: '2× per week', p: 15, t: 18, x: 3 }, { k: 'biweekly', l: 'Every 2 weeks', p: 27, t: 30, x: 4 }, { k: 'onetime', l: 'One-time cleanup', p: 85, t: 85, x: 0, one: true, n: 'Parties, move-out, home sale' }] },
   };
   function price(d, k, units, bundle) {
