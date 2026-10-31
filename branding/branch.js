@@ -47,6 +47,11 @@
 
   /* ───────── AI QUOTE → ACCEPT → SCHEDULE (trees, terraforms, contracting) ───────── */
   var URLQ = new URLSearchParams(location.search), SRC = (URLQ.get('src') || '').slice(0, 40);
+  // Logo versions: bump a number here when a branch logo changes, so browsers drop the old cached image (images are cached 30 days)
+  var LOGO_V = { trees: '7' };
+  function freshLogos() { document.querySelectorAll('img[src*="/branding/"]').forEach(function (im) { var m = im.getAttribute('src').match(/\/branding\/([a-z]+)(-192)?\.webp/); if (m && LOGO_V[m[1]] && im.getAttribute('src').indexOf('v=' + LOGO_V[m[1]]) < 0) im.src = im.getAttribute('src').replace(/(\.webp)(\?v=\d+)?/, '$1?v=' + LOGO_V[m[1]]); }); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', freshLogos); else freshLogos();
+  setTimeout(freshLogos, 1500);
   var shared = { quote: null, photos: [] };            // shared between the page form and the assistant
   function quoteCard(q) {
     return '<p class="muted" style="margin:0">' + esc(EW.name) + ' — our price</p>' +
