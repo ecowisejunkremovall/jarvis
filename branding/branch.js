@@ -81,7 +81,13 @@
     var photos = shared.photos;
     if (URLQ.get('a')) $('qAddr').value = URLQ.get('a').slice(0, 160);           // door-hanger QR: address pre-filled
     if (URLQ.get('d')) $('qDesc').value = URLQ.get('d').slice(0, 400);
-    if (SRC === 'hanger' && $('quote')) setTimeout(function () { $('quote').scrollIntoView({ block: 'start' }); }, 300);
+    // From a door hanger / mailer QR: fill in the address + job and jump to the price form
+    if (/^(hanger|notice|mailer)$/.test(SRC) && $('quote')) setTimeout(function () {
+      var qa = (URLQ.get('a') || '').slice(0, 160), qd = (URLQ.get('d') || '').slice(0, 300);
+      if (qa && $('qAddr') && !$('qAddr').value) $('qAddr').value = qa;
+      if (qd && $('qDesc') && !$('qDesc').value) $('qDesc').value = qd;
+      $('quote').scrollIntoView({ block: 'start' });
+    }, 300);
     $('qDrop').addEventListener('click', function () { $('qFiles').click(); });
     $('qFiles').addEventListener('change', function (e) {
       var files = Array.prototype.slice.call(e.target.files || [], 0, 3 - photos.length);
