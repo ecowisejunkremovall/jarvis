@@ -13,28 +13,28 @@
       ]
     },
     "quarter": {
-      "base": 149,
+      "base": 30,
       "hrs": [
         1,
         1.5
       ]
     },
     "half": {
-      "base": 232,
+      "base": 105,
       "hrs": [
         1.5,
         2
       ]
     },
     "three_quarter": {
-      "base": 316,
+      "base": 130,
       "hrs": [
         2,
         2.5
       ]
     },
     "full": {
-      "base": 399,
+      "base": 175,
       "hrs": [
         2,
         3
@@ -136,30 +136,30 @@
     90
   ],
   "dump_fee": {
-    "_comment": "MINIMUM dump fee per load size (floor). A full trip to TDS costs at least (2 tons x $61 + $30) x 1.25 = ~$190.",
+    "_comment": "MINIMUM dump fee per load size (floor), TDS Creedmoor confirmed by phone Nov 2026: $12/cu yd uncompacted, $66 min incl. first 5.5 yd, + WWM 14.5% + RCR 3.6% + environmental $16 small / $30 large load. Full 15 yd ≈ $243.",
     "single": [
       30,
       30
     ],
     "quarter": [
-      70,
-      80
+      90,
+      100
     ],
     "half": [
-      100,
-      120
+      115,
+      130
     ],
     "three_quarter": [
-      140,
-      160
+      180,
+      195
     ],
     "full": [
-      175,
-      195
+      235,
+      250
     ]
   },
   "dump_rates": {
-    "_comment": "TDS Creedmoor landfill gate rates (checked Oct 2026): $60/ton MSW (2-ton minimum per load) + TCEQ $0.94/ton => 61/ton. Environmental charge $16 small / $30 large load. RCR 3.6% + WWM 14.5% + monthly fuel surcharge => safety_pct 25. C&D large loads $90/ton. 'minimum' is the per-job share for small loads that ride along with other jobs; full-trip minimums are in dump_fee.",
+    "_comment": "TDS Creedmoor (confirmed by phone Nov 2026): uncompacted $12/cu yd, $66 minimum incl. 5.5 yd, + fees (~18%) + environmental $16/$30. Clean brush $10/yd ($20 min). Clean concrete/rock/dirt: no charge. Mixed concrete $60/ton (2-ton min). Unsecured load $35 — always tarp.",
     "per_ton": 61,
     "heavy_per_ton": 90,
     "minimum": 20,
@@ -208,5 +208,6 @@
     "min_hours_notice": 12,
     "days_ahead": 10
   },
-  "_single_note": "Single item all-in ≈ $129–149 (truck $39 + labor ~$38 + disposal $30 + fuel $25). Competitive with national chains (~$125 avg sofa)."
+  "_single_note": "Single item all-in ≈ $129–149 (truck $39 + labor ~$38 + disposal $30 + fuel $25). Competitive with national chains (~$125 avg sofa).",
+  "_load_prices_note": "All-in website prices (labor + truck + TDS + fuel): 1/4 ≈ $275, 1/2 ≈ $425, 3/4 ≈ $550, full ≈ $695. Real cost ≈ $227 / $290 / $375 / $492 → ~25% margin. Austin market: half $200–400, full avg ~$675."
 }
