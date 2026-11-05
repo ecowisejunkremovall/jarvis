@@ -271,22 +271,25 @@
   var RS = {
     bins: { name: 'EcoWise Bin Solutions', short: 'Bin cleaning', logo: '/branding/bins-192.webp?v=6', unit: 'bins', inc: 2,
       plans: [{ k: 'monthly', l: 'Monthly', p: 29, x: 8, n: 'Most popular — every 4 weeks on your trash day' }, { k: 'bimonthly', l: 'Every 2 months', p: 35, x: 10 }, { k: 'quarterly', l: 'Every 3 months', p: 45, x: 10 }, { k: 'onetime', l: 'One-time clean', p: 55, x: 15, one: true }] },
+    trees: { name: 'EcoWise Lawn & Tree Service', short: 'Lawn care', logo: '/branding/trees-192.webp?v=7', unit: '¼-acre sections', inc: 1,
+      plans: [{ k: 'weekly', l: 'Weekly (Mar–Oct)', p: 40, x: 18, n: 'Most popular — mow, edge, trim, blow · first cut free' }, { k: 'biweekly', l: 'Every 2 weeks', p: 50, x: 22 }, { k: 'monthly', l: 'Monthly (Nov–Feb)', p: 55, x: 22, n: 'Winter visit: leaves, beds, edges' }, { k: 'onetime', l: 'One-time cut', p: 75, x: 30, one: true, n: 'Move-out, sale, event' }] },
     petwaste: { name: 'EcoWise Pet Waste', short: 'Pet waste', logo: '/branding/petwaste-192.webp?v=6', unit: 'dogs', inc: 1,
       plans: [{ k: 'weekly', l: 'Weekly', p: 17, t: 20, x: 3, n: 'Most popular — disinfectant included' }, { k: 'twice_weekly', l: '2× per week', p: 15, t: 18, x: 3 }, { k: 'biweekly', l: 'Every 2 weeks', p: 27, t: 30, x: 4 }, { k: 'onetime', l: 'One-time cleanup', p: 85, t: 85, x: 0, one: true, n: 'Parties, move-out, home sale' }] },
   };
   function price(d, k, units, bundle) {
     var D = RS[d], p = D.plans.filter(function (x) { return x.k === k; })[0] || D.plans[0], n = Math.max(1, Number(units) || 1), v;
-    v = d === 'bins' ? p.p + Math.max(0, n - D.inc) * p.x : (n === 1 ? p.p : p.t + Math.max(0, n - 2) * p.x);
+    v = (d === 'bins' || d === 'trees') ? p.p + Math.max(0, n - D.inc) * p.x : (n === 1 ? p.p : p.t + Math.max(0, n - 2) * p.x);
     if (bundle && !p.one) v = v * 0.9;
     return Math.round(v * 100) / 100;
   }
   var TERMS = window.EW_TERMS || {};
   var ERR = { missing_info: 'Please fill in your name, email and address.', agree_required: 'Please type your name and check “I agree”.', signature_required: 'Please draw your signature.', stripe_not_connected: 'Online card setup is not available yet — we will call you to finish.', busy: 'Too many tries — please wait a few minutes.', not_found: 'This link is not valid. Please call ' + PHONE + '.' };
 
-  if (EW.mode === 'signup' && $('sGo')) {
+  if ((EW.mode === 'signup' || EW.signup) && $('sGo')) {
+    var LAWN = EW.branch === 'trees'; // lawn: one service only (no bins/pet-waste bundle)
     var q = new URLSearchParams(location.search);
     var divs = q.get('bundle') ? ['bins', 'petwaste'] : [EW.branch];
-    var plans = { bins: 'monthly', petwaste: 'weekly' }, units = { bins: 2, petwaste: 1 };
+    var plans = { bins: 'monthly', petwaste: 'weekly', trees: 'weekly' }, units = { bins: 2, petwaste: 1, trees: 1 };
     if (q.get('plan') && RS[EW.branch].plans.some(function (p) { return p.k === q.get('plan'); })) plans[EW.branch] = q.get('plan');
     if (q.get('units')) units[EW.branch] = Math.max(1, Math.min(12, Number(q.get('units')) || units[EW.branch]));
     if (q.get('a')) setTimeout(function () { $('sAddr').value = q.get('a').slice(0, 160); }, 0);
@@ -294,15 +297,16 @@
     $('sClear').addEventListener('click', function () { pad.clear(); });
     function render() {
       var bundle = divs.length === 2;
-      $('sSvc').innerHTML = ['bins', 'petwaste'].map(function (d) {
-        return '<button type="button" data-d="' + d + '" class="' + (divs.indexOf(d) >= 0 ? 'on' : '') + '"><img src="' + RS[d].logo + '" alt=""><b>' + RS[d].short + '</b><br><small>' + (d === 'bins' ? 'Carts washed on trash day' : 'Weekly yard scooping') + '</small></button>';
+      $('sSvc').innerHTML = (LAWN ? ['trees'] : ['bins', 'petwaste']).map(function (d) {
+        return '<button type="button" data-d="' + d + '" class="' + (divs.indexOf(d) >= 0 ? 'on' : '') + '"><img src="' + RS[d].logo + '" alt=""><b>' + RS[d].short + '</b><br><small>' + (d === 'bins' ? 'Carts washed on trash day' : d === 'trees' ? 'Mow, edge, trim & blow on a set day' : 'Weekly yard scooping') + '</small></button>';
       }).join('');
-      $('sBundle').textContent = bundle ? '✔ Bundle: 10% off both services' : 'Add the other service and save 10% on both';
+      $('sBundle').textContent = LAWN ? 'Price per visit for up to ¼ acre; add sections for bigger yards.' : bundle ? '✔ Bundle: 10% off both services' : 'Add the other service and save 10% on both';
       $('sPlans').innerHTML = divs.map(function (d) {
         var D = RS[d];
         return '<p class="f" style="font-weight:700;margin-top:14px">' + D.short + ' plan</p>' + D.plans.map(function (p) {
           return '<label class="plan ' + (plans[d] === p.k ? 'on' : '') + '"><input type="radio" name="p_' + d + '" value="' + p.k + '" ' + (plans[d] === p.k ? 'checked' : '') + '><span>' + p.l + (p.n ? '<small>' + p.n + '</small>' : '') + '</span><b>' + money(price(d, p.k, units[d], bundle)) + '</b><small>/visit</small></label>';
         }).join('') + '<label class="f">How many ' + D.unit + '?</label><input class="i" type="number" min="1" max="12" value="' + units[d] + '" data-u="' + d + '" style="max-width:110px">' +
+          (d === 'trees' && plans[d] !== 'weekly' && plans[d] !== 'onetime' ? '<p class="muted">First cut if the grass is over ~8 in.: $50 once (free with a weekly plan).</p>' : '') +
           (d === 'petwaste' && plans[d] !== 'weekly' && plans[d] !== 'twice_weekly' && plans[d] !== 'onetime' ? '<p class="muted">First cleanup if the yard has buildup: $65 once (free with a weekly plan).</p>' : '');
       }).join('');
       $('sPetFields').classList.toggle('hidden', divs.indexOf('petwaste') < 0);
@@ -312,7 +316,7 @@
       $('sTotal').textContent = money(tot);
     }
     $('sSvc').addEventListener('click', function (e) {
-      var b = e.target.closest('button[data-d]'); if (!b) return; var d = b.getAttribute('data-d');
+      var b = e.target.closest('button[data-d]'); if (!b || LAWN) return; var d = b.getAttribute('data-d');
       if (divs.indexOf(d) >= 0) { if (divs.length > 1) divs = divs.filter(function (x) { return x !== d; }); } else divs = ['bins', 'petwaste'];
       render();
     });
