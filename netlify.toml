@@ -32,3 +32,40 @@
   [headers.values]
     Content-Type = "application/manifest+json"
     Cache-Control = "public, max-age=86400"
+
+# Bin Solutions & Pet Waste paused (Nov 2026) - send visitors to the home page
+[[redirects]]
+  from = "/bins"
+  to = "/"
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "/bins/*"
+  to = "/"
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "/pet-waste"
+  to = "/"
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "/pet-waste/*"
+  to = "/"
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "/petwaste"
+  to = "/"
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "/petwaste/*"
+  to = "/"
+  status = 302
+  force = true
